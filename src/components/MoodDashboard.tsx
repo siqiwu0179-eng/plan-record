@@ -64,6 +64,22 @@ const initialRecords: Record<string, MoodRecord> = {
   "2026-08-09": { mood: 3, entry: "", tags: [] },
 };
 
+const moodRecordsStorageKey = "mood-records-v1";
+
+const readMoodRecords = (): Record<string, MoodRecord> => {
+  const stored = window.localStorage.getItem(moodRecordsStorageKey);
+  if (!stored) return initialRecords;
+
+  try {
+    const parsed = JSON.parse(stored) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, MoodRecord>)
+      : initialRecords;
+  } catch {
+    return initialRecords;
+  }
+};
+
 const dateKey = (date: Date) =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
     date.getDate(),
@@ -92,15 +108,7 @@ export function MoodDashboard({
 }) {
   const todayKey = dateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(todayKey);
-  const [records, setRecords] = useState<Record<string, MoodRecord>>(() => {
-    const stored = window.localStorage.getItem("mood-records-v1");
-    if (!stored) return initialRecords;
-    try {
-      return { ...initialRecords, ...(JSON.parse(stored) as Record<string, MoodRecord>) };
-    } catch {
-      return initialRecords;
-    }
-  });
+  const [records, setRecords] = useState<Record<string, MoodRecord>>(readMoodRecords);
   const [selectedMood, setSelectedMood] = useState(records[todayKey]?.mood ?? 3);
   const [entry, setEntry] = useState(records[todayKey]?.entry ?? "");
   const [availableTags, setAvailableTags] = useState(["充实", "放松", "有一点疲惫"]);
@@ -121,7 +129,7 @@ export function MoodDashboard({
   }, [selectedDate]);
 
   useEffect(() => {
-    window.localStorage.setItem("mood-records-v1", JSON.stringify(records));
+    window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(records));
   }, [records]);
 
   const selected = parseDate(selectedDate);
@@ -201,14 +209,18 @@ export function MoodDashboard({
   };
 
   const saveRecord = () => {
-    setRecords((current) => ({
-      ...current,
-      [selectedDate]: {
-        mood: selectedMood,
-        entry,
-        tags: selectedTags,
-      },
-    }));
+    setRecords((current) => {
+      const next = {
+        ...current,
+        [selectedDate]: {
+          mood: selectedMood,
+          entry,
+          tags: selectedTags,
+        },
+      };
+      window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(next));
+      return next;
+    });
     setSaved(true);
   };
 
@@ -220,6 +232,7 @@ export function MoodDashboard({
     setRecords((current) => {
       const next = { ...current };
       delete next[selectedDate];
+      window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(next));
       return next;
     });
     setSelectedMood(3);
