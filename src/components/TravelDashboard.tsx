@@ -136,9 +136,23 @@ const getRoutePath = ([startX, startY]: [number, number], [endX, endY]: [number,
   if (endX - startX > mapWidth / 2) wrappedEndX -= mapWidth;
   if (startX - endX > mapWidth / 2) wrappedEndX += mapWidth;
 
-  const controlX = (startX + wrappedEndX) / 2;
-  const controlY =
-    Math.min(startY, endY) - Math.min(92, 26 + Math.abs(wrappedEndX - startX) * 0.12);
+  const deltaX = wrappedEndX - startX;
+  const deltaY = endY - startY;
+  const distance = Math.max(1, Math.hypot(deltaX, deltaY));
+  let normalX = -deltaY / distance;
+  let normalY = deltaX / distance;
+
+  // Give every flight the same geographic bow: primarily northward, and for
+  // near-vertical legs consistently eastward. Reversing a route therefore
+  // produces the same arc instead of an apparently random bend.
+  if (normalY > 0 || (Math.abs(normalY) < 0.08 && normalX < 0)) {
+    normalX *= -1;
+    normalY *= -1;
+  }
+
+  const curvature = Math.min(96, Math.max(18, distance * 0.18));
+  const controlX = (startX + wrappedEndX) / 2 + normalX * curvature;
+  const controlY = (startY + endY) / 2 + normalY * curvature;
   const primary = `M ${startX} ${startY} Q ${controlX} ${controlY} ${wrappedEndX} ${endY}`;
 
   if (wrappedEndX < 0) {
@@ -484,14 +498,15 @@ function WorldTravelMap({
                   )
                 }
               >
+                <circle r={10} fill="transparent" />
                 <circle
-                  r={isEndpoint ? 8.5 : 7.5}
+                  r={isEndpoint ? 6.2 : 5.2}
                   fill="white"
                   stroke={city.color}
-                  strokeWidth={2.4}
+                  strokeWidth={1.8}
                   vectorEffect="non-scaling-stroke"
                 />
-                <circle r={2.6} fill={city.color} />
+                <circle r={1.8} fill={city.color} />
               </g>
             );
           })}
@@ -672,7 +687,11 @@ function DestinationStrip({
               <img
                 src={city.image}
                 alt={`${city.name}城市风景`}
-                className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
+                className="h-full w-full bg-slate-200 object-cover transition duration-500 group-hover:scale-105 dark:bg-slate-800"
+                onError={(event) => {
+                  const image = event.currentTarget;
+                  if (image.src !== city.fallbackImage) image.src = city.fallbackImage;
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-900/10 to-transparent" />
               <button

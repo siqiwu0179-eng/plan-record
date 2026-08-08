@@ -6,6 +6,7 @@ export type City = {
   lng: number;
   color: string;
   image: string;
+  fallbackImage: string;
   searchTerms: string;
 };
 
@@ -30,6 +31,17 @@ const featuredImages: Record<string, string> = {
   "new-york": "https://images.unsplash.com/photo-1485871981521-5b1fd3805eee?auto=format&fit=crop&w=760&q=82",
   dubai: "https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=760&q=82",
   melbourne: "https://images.unsplash.com/photo-1514395462725-fb4566210144?auto=format&fit=crop&w=760&q=82",
+};
+
+// Build a city-specific thumbnail query instead of reusing one regional photo.
+// English aliases make the result more precise for cities with Chinese labels.
+const getCitySceneryImage = (searchTerms: string) => {
+  const englishAliases = searchTerms
+    .replace(/[^A-Za-z0-9'. -]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const query = `${englishAliases} travel landscape photography`;
+  return `https://tse1.mm.bing.net/th?q=${encodeURIComponent(query)}&w=760&h=520&c=7&rs=1&p=0`;
 };
 
 const colors = ["#3b82f6", "#10b981", "#f97316", "#8b5cf6", "#ec4899", "#06b6d4"];
@@ -212,7 +224,8 @@ export const cities: City[] = citySeeds.map(
     lat,
     lng,
     color: colors[index % colors.length],
-    image: featuredImages[id] ?? regionImages[region],
+    image: featuredImages[id] ?? getCitySceneryImage(searchTerms),
+    fallbackImage: regionImages[region],
     searchTerms: `${country} ${name} ${searchTerms}`,
   }),
 );
