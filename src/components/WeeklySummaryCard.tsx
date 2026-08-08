@@ -18,7 +18,7 @@ export function WeeklySummaryCard({ week }: WeeklySummaryCardProps) {
   ];
 
   return (
-    <aside className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <aside className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex items-center gap-2">
         <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
           <BarChart3 size={20} />

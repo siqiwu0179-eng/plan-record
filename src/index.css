@@ -11,6 +11,16 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+html.dark {
+  color-scheme: dark;
+  color: #e2e8f0;
+  background: #020617;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -19,6 +29,221 @@ body {
   min-width: 320px;
   min-height: 100vh;
   margin: 0;
+}
+
+.inner-page-scroll-room {
+  min-height: calc(100vh + 60px);
+  padding-bottom: 2rem !important;
+}
+
+.inner-page-scroll-room::after {
+  display: block;
+  height: 60px;
+  content: "";
+}
+
+.workbench-shell {
+  position: relative;
+  isolation: isolate;
+  min-height: 100vh;
+  background-image:
+    linear-gradient(180deg, rgb(239 247 255 / 0.06), rgb(230 241 252 / 0.12)),
+    url("/workbench-alpine-bg-v4.png");
+  background-position: center;
+  background-size: cover;
+  background-attachment: fixed;
+}
+
+.workbench-shell::before {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(110deg, rgb(238 247 255 / 0.08), transparent 58%, rgb(255 247 239 / 0.05));
+}
+
+.glass-panel,
+.workbench-shell article,
+.workbench-shell section.rounded-2xl {
+  border: 1px solid rgb(255 255 255 / 0.72);
+  background-color: rgb(255 255 255 / 0.72);
+  box-shadow: 0 16px 44px rgb(58 88 119 / 0.10), inset 0 1px 0 rgb(255 255 255 / 0.65);
+  backdrop-filter: blur(20px) saturate(108%);
+  -webkit-backdrop-filter: blur(20px) saturate(108%);
+}
+
+.glass-sidebar {
+  background-color: rgb(255 255 255 / 0.68);
+  box-shadow: 8px 0 30px rgb(58 88 119 / 0.06);
+  backdrop-filter: blur(22px) saturate(108%);
+  -webkit-backdrop-filter: blur(22px) saturate(108%);
+}
+
+.glass-button {
+  border: 1px solid rgb(255 255 255 / 0.75);
+  background-color: rgb(255 255 255 / 0.72);
+  box-shadow: 0 6px 18px rgb(58 88 119 / 0.08);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition: background-color 160ms ease, transform 160ms ease;
+}
+
+.glass-button:hover {
+  background-color: rgb(255 255 255 / 0.9);
+  transform: translateY(-1px);
+}
+
+.home-card {
+  display: flex;
+  position: relative;
+  height: clamp(170px, 31vh, 190px);
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  border-radius: 24px;
+  padding: 18px 18px 44px;
+  color: inherit;
+  transition: transform 180ms ease, background-color 180ms ease;
+}
+
+.home-detail-link {
+  position: absolute;
+  bottom: 15px;
+  left: 18px;
+  height: 17px;
+  margin: 0;
+  color: rgb(100 116 139);
+  font-size: 0.75rem;
+  line-height: 17px;
+}
+
+.home-card > h3 {
+  height: 26px;
+  min-height: 26px;
+  align-items: center;
+  margin: 0;
+  line-height: 26px;
+}
+
+.home-card:hover {
+  transform: translateY(-3px);
+  background-color: rgb(255 255 255 / 0.82);
+}
+
+.progress-orbit {
+  display: grid;
+  width: 96px;
+  height: 96px;
+  flex: none;
+  place-items: center;
+  border-radius: 999px;
+  background: conic-gradient(#668cf1 0 var(--progress, 0%), rgb(209 220 242 / .82) var(--progress, 0%) 100%);
+}
+
+.progress-orbit::before {
+  grid-area: 1 / 1;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  background: rgb(255 255 255 / .82);
+  content: "";
+}
+
+.progress-orbit span {
+  z-index: 1;
+  grid-area: 1 / 1;
+  font-size: 1.45rem;
+  font-weight: 700;
+}
+
+.workbench-shell .bg-white {
+  background-color: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(20px);
+}
+
+.workbench-shell .bg-white\/85,
+.workbench-shell .bg-white\/80,
+.workbench-shell .bg-white\/70,
+.workbench-shell .bg-white\/60 {
+  background-color: rgb(255 255 255 / 0.72);
+  backdrop-filter: blur(20px);
+}
+
+.dark .workbench-shell {
+  background-image:
+    linear-gradient(rgb(3 15 35 / 0.56), rgb(3 15 35 / 0.62)),
+    url("/workbench-alpine-bg-v4.png");
+}
+
+.dark .glass-panel,
+.dark .workbench-shell article,
+.dark .workbench-shell section.rounded-2xl,
+.dark .glass-sidebar {
+  border-color: rgb(148 163 184 / 0.2);
+  background-color: rgb(15 23 42 / 0.72);
+}
+
+.dark body {
+  background: #020617;
+}
+
+.dark .bg-white,
+.dark .bg-white\/60,
+.dark .bg-white\/70 {
+  background-color: #0f172a;
+}
+
+.dark .bg-blue-50,
+.dark .bg-blue-50\/60,
+.dark .bg-blue-50\/70,
+.dark .bg-blue-100 {
+  background-color: rgb(30 58 138 / 0.3);
+}
+
+.dark .bg-green-50\/70,
+.dark .bg-green-100 {
+  background-color: rgb(20 83 45 / 0.3);
+}
+
+.dark .bg-orange-50\/70,
+.dark .bg-orange-100 {
+  background-color: rgb(124 45 18 / 0.3);
+}
+
+.dark .bg-violet-50\/70,
+.dark .bg-violet-100 {
+  background-color: rgb(76 29 149 / 0.3);
+}
+
+.dark .text-slate-950,
+.dark .text-slate-900,
+.dark .text-slate-800,
+.dark .text-slate-700 {
+  color: #e2e8f0;
+}
+
+.dark .text-slate-600,
+.dark .text-slate-500 {
+  color: #94a3b8;
+}
+
+.dark .border-slate-200,
+.dark .border-slate-100 {
+  border-color: #334155;
+}
+
+.dark .ring-slate-200 {
+  --tw-ring-color: #334155;
+}
+
+.dark .bg-slate-100 {
+  background-color: #1e293b;
+}
+
+.dark .hover\:bg-white\/70:hover,
+.dark .hover\:bg-slate-50:hover {
+  background-color: #1e293b;
 }
 
 button,

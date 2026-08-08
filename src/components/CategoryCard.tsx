@@ -44,7 +44,7 @@ export function CategoryCard({
   };
 
   return (
-    <article className={`flex min-h-[290px] flex-col rounded-lg border ${meta.borderClass} ${meta.bgClass} p-5 shadow-sm`}>
+    <article className={`flex min-h-[290px] flex-col rounded-2xl border ${meta.borderClass} ${meta.bgClass} p-5 shadow-sm`}>
       <div className="flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <span className={`flex h-9 w-9 items-center justify-center rounded-lg ${meta.iconBgClass} ${meta.textClass}`}>

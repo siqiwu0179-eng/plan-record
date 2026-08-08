@@ -16,7 +16,7 @@ export function DayCard({ day, selected, onSelect }: DayCardProps) {
     <button
       type="button"
       onClick={() => onSelect(day.date)}
-      className={`min-w-[172px] rounded-lg border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft ${
+      className={`min-w-[172px] rounded-2xl border bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-soft ${
         selected ? "border-blue-500 bg-blue-50/60 ring-4 ring-blue-100" : "border-slate-200"
       }`}
     >

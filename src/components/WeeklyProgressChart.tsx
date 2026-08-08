@@ -14,9 +14,10 @@ import { getDayRate } from "../utils/stats";
 
 type WeeklyProgressChartProps = {
   week: WeekPlan;
+  darkMode?: boolean;
 };
 
-export function WeeklyProgressChart({ week }: WeeklyProgressChartProps) {
+export function WeeklyProgressChart({ week, darkMode = false }: WeeklyProgressChartProps) {
   const data = week.days.map((day, index) => ({
     name: WEEKDAY_LABELS[index],
     date: formatSlashDate(day.date),
@@ -24,7 +25,7 @@ export function WeeklyProgressChart({ week }: WeeklyProgressChartProps) {
   }));
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900">
       <div className="mb-4 flex items-center justify-between gap-4">
         <div>
           <h3 className="text-xl font-bold text-slate-950">本周完成度趋势</h3>
@@ -35,12 +36,12 @@ export function WeeklyProgressChart({ week }: WeeklyProgressChartProps) {
       <div className="h-[300px] w-full">
         <ResponsiveContainer>
           <LineChart data={data} margin={{ top: 20, right: 18, bottom: 8, left: 0 }}>
-            <CartesianGrid stroke="#e2e8f0" strokeDasharray="4 4" vertical={false} />
+            <CartesianGrid stroke={darkMode ? "#334155" : "#e2e8f0"} strokeDasharray="4 4" vertical={false} />
             <XAxis
               dataKey="name"
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#475569", fontSize: 13, fontWeight: 600 }}
+              tick={{ fill: darkMode ? "#cbd5e1" : "#475569", fontSize: 13, fontWeight: 600 }}
               tickFormatter={(value, index) => `${value} ${data[index]?.date ?? ""}`}
             />
             <YAxis
@@ -49,7 +50,7 @@ export function WeeklyProgressChart({ week }: WeeklyProgressChartProps) {
               tickFormatter={(value) => `${value}%`}
               tickLine={false}
               axisLine={false}
-              tick={{ fill: "#64748b", fontSize: 12 }}
+              tick={{ fill: darkMode ? "#94a3b8" : "#64748b", fontSize: 12 }}
             />
             <Tooltip
               formatter={(value) => [`${value}%`, "完成率"]}
@@ -59,7 +60,9 @@ export function WeeklyProgressChart({ week }: WeeklyProgressChartProps) {
               }}
               contentStyle={{
                 borderRadius: 8,
-                border: "1px solid #e2e8f0",
+                border: `1px solid ${darkMode ? "#334155" : "#e2e8f0"}`,
+                background: darkMode ? "#0f172a" : "#ffffff",
+                color: darkMode ? "#e2e8f0" : "#0f172a",
                 boxShadow: "0 12px 30px rgba(15, 23, 42, 0.1)",
               }}
             />
