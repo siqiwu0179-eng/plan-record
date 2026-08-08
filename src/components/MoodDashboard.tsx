@@ -20,70 +20,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { toDateKey } from "../utils/date";
+import {
+  MOODS,
+  MOOD_RECORDS_STORAGE_KEY,
+  readMoodRecords,
+  type MoodRecord,
+} from "../utils/mood";
 import { DashboardPageHeader } from "./DashboardPageHeader";
-
-const moods = [
-  ["☹️", "低落"],
-  ["😕", "有点低落"],
-  ["🙂", "平静"],
-  ["😊", "开心"],
-  ["😄", "非常开心"],
-] as const;
-
-type MoodRecord = {
-  mood: number;
-  entry: string;
-  tags: string[];
-};
-
-const initialRecords: Record<string, MoodRecord> = {
-  "2026-08-02": {
-    mood: 2,
-    entry: "周末有些疲惫，但推进了项目的关键部分，值得。",
-    tags: ["有一点疲惫"],
-  },
-  "2026-08-03": {
-    mood: 4,
-    entry: "专注度很高，完成了几个重要任务，成就感满满。",
-    tags: ["充实"],
-  },
-  "2026-08-04": {
-    mood: 3,
-    entry: "今天早上跑步，空气很清新，完成了目标配速。",
-    tags: ["放松"],
-  },
-  "2026-08-05": {
-    mood: 3,
-    entry:
-      "傍晚沿着湖边散步，微风拂过，湖面很安静。\n远处的雪山被夕阳染成了淡淡的金色，心里突然觉得很放松。\n今天工作进展顺利，和同事的沟通也很愉快，感到充实和满足。",
-    tags: ["充实", "放松"],
-  },
-  "2026-08-06": { mood: 3, entry: "", tags: [] },
-  "2026-08-07": { mood: 2, entry: "", tags: ["有一点疲惫"] },
-  "2026-08-08": { mood: 4, entry: "", tags: ["放松"] },
-  "2026-08-09": { mood: 3, entry: "", tags: [] },
-};
-
-const moodRecordsStorageKey = "mood-records-v1";
-
-const readMoodRecords = (): Record<string, MoodRecord> => {
-  const stored = window.localStorage.getItem(moodRecordsStorageKey);
-  if (!stored) return initialRecords;
-
-  try {
-    const parsed = JSON.parse(stored) as unknown;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, MoodRecord>)
-      : initialRecords;
-  } catch {
-    return initialRecords;
-  }
-};
-
-const dateKey = (date: Date) =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(
-    date.getDate(),
-  ).padStart(2, "0")}`;
 
 const parseDate = (value: string) => new Date(`${value}T12:00:00`);
 
@@ -106,7 +50,7 @@ export function MoodDashboard({
   onMenuToggle: () => void;
   onBack: () => void;
 }) {
-  const todayKey = dateKey(new Date());
+  const todayKey = toDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(todayKey);
   const [records, setRecords] = useState<Record<string, MoodRecord>>(readMoodRecords);
   const [selectedMood, setSelectedMood] = useState(records[todayKey]?.mood ?? 3);
@@ -129,7 +73,7 @@ export function MoodDashboard({
   }, [selectedDate]);
 
   useEffect(() => {
-    window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(records));
+    window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(records));
   }, [records]);
 
   const selected = parseDate(selectedDate);
@@ -143,7 +87,7 @@ export function MoodDashboard({
       const value = new Date(start);
       value.setDate(start.getDate() + index);
       return {
-        key: dateKey(value),
+        key: toDateKey(value),
         day: value.getDate(),
         currentMonth: value.getMonth() === calendarMonth,
       };
@@ -158,7 +102,7 @@ export function MoodDashboard({
       (label, index) => {
         const day = new Date(monday);
         day.setDate(monday.getDate() + index);
-        const key = dateKey(day);
+        const key = toDateKey(day);
         return { d: label, v: records[key]?.mood ?? null, date: key };
       },
     );
@@ -218,7 +162,7 @@ export function MoodDashboard({
           tags: selectedTags,
         },
       };
-      window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(next));
+      window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
     setSaved(true);
@@ -232,7 +176,7 @@ export function MoodDashboard({
     setRecords((current) => {
       const next = { ...current };
       delete next[selectedDate];
-      window.localStorage.setItem(moodRecordsStorageKey, JSON.stringify(next));
+      window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
       return next;
     });
     setSelectedMood(3);
@@ -335,7 +279,7 @@ export function MoodDashboard({
           </h3>
           <p className="mt-5 text-sm font-semibold">这一天感觉怎么样？</p>
           <div className="mt-4 grid grid-cols-5 gap-2">
-            {moods.map(([emoji, label], index) => (
+            {MOODS.map(([emoji, label], index) => (
               <button
                 type="button"
                 key={label}
@@ -473,7 +417,7 @@ export function MoodDashboard({
                 本周情绪趋势
               </h3>
               <span className="text-xs text-slate-500">
-                平均情绪：{moods[averageMood - 1][0]} {moods[averageMood - 1][1]}
+                平均情绪：{MOODS[averageMood - 1][0]} {MOODS[averageMood - 1][1]}
               </span>
             </div>
             <div className="mt-4 h-[220px]">
@@ -521,9 +465,9 @@ export function MoodDashboard({
                     <b>{formatRecordDate(recordDate)}</b>
                     <p className="text-xs text-slate-500">{getWeekday(recordDate)}</p>
                   </div>
-                  <span className="text-3xl">{moods[record.mood - 1][0]}</span>
+                  <span className="text-3xl">{MOODS[record.mood - 1][0]}</span>
                   <div className="min-w-0">
-                    <b className="text-sm">{moods[record.mood - 1][1]}的一天</b>
+                    <b className="text-sm">{MOODS[record.mood - 1][1]}的一天</b>
                     <p className="line-clamp-1 text-xs text-slate-500">
                       {record.entry.trim() || "这一天还没有填写文字记录。"}
                     </p>

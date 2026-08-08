@@ -2,6 +2,7 @@ import { CalendarCheck2, ChartNoAxesCombined, CloudSun, Heart, MapPin, Pencil, P
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { WeekPlan } from "../types";
 import { toDateKey } from "../utils/date";
+import { MOODS, readMoodRecords } from "../utils/mood";
 import { TRAVEL_ROUTES_STORAGE_KEY, getTravelSummary, readTravelRoutes } from "../utils/travel";
 import type { WorkspaceView } from "../views";
 
@@ -112,6 +113,8 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
   const greeting = now.getHours() < 12 ? "早上好" : now.getHours() < 18 ? "下午好" : "晚上好";
   const date = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(now);
   const todayKey = toDateKey(now);
+  const todayMood = readMoodRecords()[todayKey];
+  const todayMoodLabel = todayMood ? MOODS[todayMood.mood - 1] ?? MOODS[2] : null;
   const dayRates = useMemo(
     () => week.days.map((day) => {
       if (!day.tasks.length) return 0;
@@ -209,7 +212,30 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
         </button>
         <button onClick={() => onNavigate("mood")} className="glass-panel home-card text-left">
           <h3 className="flex items-center gap-3 font-bold"><Heart className="text-rose-400" fill="currentColor" /> 心情日记</h3>
-          <div className="mt-4 flex items-center gap-3"><span className="text-4xl">🙂</span><div><p className="text-xl font-bold">平静</p><p className="text-xs text-slate-500">今日心情</p></div></div>
+          {todayMood && todayMoodLabel ? (
+            <div className="mt-3 min-h-0">
+              <div className="flex items-center gap-3">
+                <span className="text-4xl">{todayMoodLabel[0]}</span>
+                <div>
+                  <p className="text-xl font-bold">{todayMoodLabel[1]}</p>
+                  <p className="text-xs text-slate-500">今日心情</p>
+                </div>
+              </div>
+              <div className="mt-2 flex max-h-8 flex-wrap gap-1.5 overflow-hidden">
+                {todayMood.tags.length ? todayMood.tags.map((tag) => (
+                  <span key={tag} className="rounded-full border border-blue-100 bg-blue-50/70 px-2.5 py-1 text-[11px] text-blue-600">
+                    {tag}
+                  </span>
+                )) : (
+                  <span className="text-xs text-slate-400">暂无标签</span>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 items-center justify-center px-2 text-center text-sm font-semibold text-slate-500">
+              点击记录一天的心情
+            </div>
+          )}
           <p className="home-detail-link">查看详情　›</p>
         </button>
       </section>
