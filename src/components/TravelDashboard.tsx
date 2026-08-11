@@ -22,6 +22,7 @@ import {
   readTravelRoutes,
   type TravelRoute,
 } from "../utils/travel";
+import { notifyDataChanged } from "../utils/cloud";
 import { Sidebar } from "./Sidebar";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import type { WorkspaceView } from "../views";
@@ -742,6 +743,7 @@ export function TravelDashboard({
 
   useEffect(() => {
     window.localStorage.setItem(TRAVEL_ROUTES_STORAGE_KEY, JSON.stringify(routes));
+    notifyDataChanged();
   }, [routes]);
 
   const visitedCityIds = useMemo(

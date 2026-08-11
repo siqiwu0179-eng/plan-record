@@ -27,6 +27,7 @@ import {
   readMoodRecords,
   type MoodRecord,
 } from "../utils/mood";
+import { notifyDataChanged } from "../utils/cloud";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 
 const parseDate = (value: string) => new Date(`${value}T12:00:00`);
@@ -163,6 +164,7 @@ export function MoodDashboard({
         },
       };
       window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
+      notifyDataChanged();
       return next;
     });
     setSaved(true);
@@ -177,6 +179,7 @@ export function MoodDashboard({
       const next = { ...current };
       delete next[selectedDate];
       window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
+      notifyDataChanged();
       return next;
     });
     setSelectedMood(3);

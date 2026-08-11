@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { WeekPlan } from "../types";
 import { toDateKey } from "../utils/date";
 import { MOODS, readMoodRecords } from "../utils/mood";
+import { notifyDataChanged } from "../utils/cloud";
 import { TRAVEL_ROUTES_STORAGE_KEY, getTravelSummary, readTravelRoutes } from "../utils/travel";
 import type { WorkspaceView } from "../views";
 
@@ -50,6 +51,7 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
   }, []);
   useEffect(() => {
     window.localStorage.setItem("plan-record-home-motto", motto);
+    notifyDataChanged();
   }, [motto]);
   useEffect(() => {
     const syncTravelSummary = () => {

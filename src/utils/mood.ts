@@ -44,14 +44,14 @@ export const INITIAL_MOOD_RECORDS: Record<string, MoodRecord> = {
 
 export const readMoodRecords = (): Record<string, MoodRecord> => {
   const stored = window.localStorage.getItem(MOOD_RECORDS_STORAGE_KEY);
-  if (!stored) return INITIAL_MOOD_RECORDS;
+  if (!stored) return {};
 
   try {
     const parsed = JSON.parse(stored) as Record<string, MoodRecord>;
     return parsed && typeof parsed === "object" && !Array.isArray(parsed)
       ? parsed
-      : INITIAL_MOOD_RECORDS;
+      : {};
   } catch {
-    return INITIAL_MOOD_RECORDS;
+    return {};
   }
 };

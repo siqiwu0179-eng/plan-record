@@ -39,8 +39,7 @@ export const loadPlans = (): StoredPlans => {
   if (Object.keys(plans).length > 0) return plans;
 
   const currentWeekStart = toDateKey(startOfWeek(new Date()));
-  const seededWeek = createWeekPlan(currentWeekStart, true);
-  const initialPlans = { [currentWeekStart]: seededWeek };
+  const initialPlans = { [currentWeekStart]: createWeekPlan(currentWeekStart) };
   savePlans(initialPlans);
   return initialPlans;
 };

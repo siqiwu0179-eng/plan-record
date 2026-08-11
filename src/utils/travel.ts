@@ -35,11 +35,11 @@ const distanceKm = (from: City, to: City) => {
 
 export const readTravelRoutes = () => {
   const stored = window.localStorage.getItem(TRAVEL_ROUTES_STORAGE_KEY);
-  if (!stored) return INITIAL_TRAVEL_ROUTES;
+  if (!stored) return [];
 
   try {
     const routes = JSON.parse(stored) as TravelRoute[];
-    if (!Array.isArray(routes)) return INITIAL_TRAVEL_ROUTES;
+    if (!Array.isArray(routes)) return [];
     return routes.map((route) => ({
       ...route,
       endDate:
@@ -48,7 +48,7 @@ export const readTravelRoutes = () => {
         route.date,
     }));
   } catch {
-    return INITIAL_TRAVEL_ROUTES;
+    return [];
   }
 };
 
