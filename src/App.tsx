@@ -40,6 +40,7 @@ function App() {
   const [dataRevision, setDataRevision] = useState(0);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [hasPendingMigration, setHasPendingMigration] = useState(false);
+  const [cloudReady, setCloudReady] = useState(false);
 
   const initialWeekStart = toDateKey(startOfWeek(new Date()));
   const [plans, setPlans] = useState<StoredPlans>(() => loadPlans());
@@ -61,6 +62,7 @@ function App() {
     let mounted = true;
 
     const hydrate = async (nextSession: Session | null) => {
+      if (mounted) setCloudReady(false);
       if (!nextSession) {
         const pendingMigration = capturePendingMigration();
         clearLocalUserData();
@@ -75,6 +77,7 @@ function App() {
         return;
       }
 
+      let hydrationSucceeded = false;
       try {
         const cloudData = await loadCloudData(nextSession);
         const pendingMigration = getPendingMigration();
@@ -121,12 +124,14 @@ function App() {
           }
           await saveCloudData(nextSession, getLocalCloudData());
         }
+        hydrationSucceeded = true;
       } catch (error) {
         console.error("Unable to load plan-record data", error);
       }
 
       if (mounted) {
         setSession(nextSession);
+        setCloudReady(hydrationSucceeded);
         setShowAuthModal(false);
       }
     };
@@ -164,15 +169,15 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem("plan-record-profile-name", profileName);
-    if (session) void saveCloudData(session, getLocalCloudData());
-  }, [profileName, session]);
+    if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
+  }, [profileName, session, cloudReady]);
 
   useEffect(() => {
-    if (!session) return;
+    if (!session || !cloudReady) return;
     const persist = () => void saveCloudData(session, getLocalCloudData());
     window.addEventListener("plan-record-data-changed", persist);
     return () => window.removeEventListener("plan-record-data-changed", persist);
-  }, [session]);
+  }, [session, cloudReady]);
 
   const navigateTo = (view: WorkspaceView) => {
     setActiveView(view);
@@ -183,10 +188,12 @@ function App() {
     setPlans((currentPlans) => {
       const nextPlans = ensureWeekPlan(currentPlans, activeWeekStart);
       if (nextPlans !== currentPlans) savePlans(nextPlans);
-      if (session && nextPlans !== currentPlans) void saveCloudData(session, getLocalCloudData());
+      if (session && cloudReady && nextPlans !== currentPlans) {
+        void saveCloudData(session, getLocalCloudData());
+      }
       return nextPlans;
     });
-  }, [activeWeekStart]);
+  }, [activeWeekStart, session, cloudReady]);
 
   const activeWeek = useMemo(() => {
     return plans[activeWeekStart] ?? ensureWeekPlan(plans, activeWeekStart)[activeWeekStart];
