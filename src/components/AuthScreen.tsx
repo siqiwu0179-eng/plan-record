@@ -4,7 +4,6 @@ import { isSupabaseConfigured, supabase } from "../lib/supabase";
 
 type Props = {
   open: boolean;
-  hasPendingMigration: boolean;
   onClose: () => void;
   onAuthenticated: (name?: string) => void;
 };
@@ -19,7 +18,7 @@ const toInternalEmail = (phone: string) => {
   return `${digits}@plan-record.local`;
 };
 
-export function AuthScreen({ open, hasPendingMigration, onClose, onAuthenticated }: Props) {
+export function AuthScreen({ open, onClose, onAuthenticated }: Props) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -106,12 +105,6 @@ export function AuthScreen({ open, hasPendingMigration, onClose, onAuthenticated
           {mode === "signin" ? "欢迎回来" : "创建你的账户"}
         </h2>
         <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">手机号 + 密码，不使用短信验证码</p>
-        {hasPendingMigration && (
-          <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-200">
-            已安全保留此浏览器的原有数据，登录后会自动存入你的账户。
-          </p>
-        )}
-
         <form className="mt-8 space-y-4" onSubmit={submit}>
           {mode === "signup" && (
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-200">

@@ -18,11 +18,9 @@ import { parseDateKey, startOfWeek, toDateKey } from "./utils/date";
 import { createTask, ensureWeekPlan, getRelativeWeekStart, loadPlans, savePlans } from "./utils/storage";
 import {
   applyCloudData,
-  capturePendingMigration,
   clearLocalUserData,
-  completePendingMigration,
+  createInitialCloudData,
   getLocalCloudData,
-  getPendingMigration,
   loadAvatarObjectUrl,
   loadCloudData,
   saveCloudData,
@@ -39,7 +37,6 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [dataRevision, setDataRevision] = useState(0);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-  const [hasPendingMigration, setHasPendingMigration] = useState(false);
   const [cloudReady, setCloudReady] = useState(false);
 
   const initialWeekStart = toDateKey(startOfWeek(new Date()));
@@ -64,10 +61,8 @@ function App() {
     const hydrate = async (nextSession: Session | null) => {
       if (mounted) setCloudReady(false);
       if (!nextSession) {
-        const pendingMigration = capturePendingMigration();
         clearLocalUserData();
         if (mounted) {
-          setHasPendingMigration(Boolean(pendingMigration));
           setSession(null);
           setPlans(loadPlans());
           setProfileName("林溪");
@@ -80,49 +75,27 @@ function App() {
       let hydrationSucceeded = false;
       try {
         const cloudData = await loadCloudData(nextSession);
-        const pendingMigration = getPendingMigration();
-        const effectiveData = pendingMigration
-          ? {
-              ...pendingMigration,
-              profileName:
-                cloudData?.profileName ||
-                String(nextSession.user.user_metadata?.full_name ?? "").trim() ||
-                pendingMigration.profileName,
-              avatarPath: cloudData?.avatarPath ?? null,
-            }
-          : cloudData;
+        const effectiveData = cloudData ?? createInitialCloudData(nextSession);
 
-        if (pendingMigration && effectiveData) {
+        if (!cloudData) {
           await saveCloudData(nextSession, effectiveData);
-          completePendingMigration();
-          if (mounted) setHasPendingMigration(false);
         }
 
-        if (effectiveData) {
-          applyCloudData(effectiveData);
-          let nextAvatarUrl: string | null = null;
-          if (effectiveData.avatarPath) {
-            try {
-              nextAvatarUrl = await loadAvatarObjectUrl(effectiveData.avatarPath);
-            } catch (error) {
-              console.error("Unable to load profile avatar", error);
-            }
+        applyCloudData(effectiveData);
+        let nextAvatarUrl: string | null = null;
+        if (effectiveData.avatarPath) {
+          try {
+            nextAvatarUrl = await loadAvatarObjectUrl(effectiveData.avatarPath);
+          } catch (error) {
+            console.error("Unable to load profile avatar", error);
           }
-          if (mounted) {
-            setPlans(loadPlans());
-            setProfileName(effectiveData.profileName || "林溪");
-            setAvatarUrl(nextAvatarUrl);
-            setTheme(effectiveData.theme);
-            setDataRevision((value) => value + 1);
-          }
-        } else {
-          if (mounted) setAvatarUrl(null);
-          const signupName = String(nextSession.user.user_metadata?.full_name ?? "").trim();
-          if (signupName) {
-            window.localStorage.setItem("plan-record-profile-name", signupName);
-            if (mounted) setProfileName(signupName);
-          }
-          await saveCloudData(nextSession, getLocalCloudData());
+        }
+        if (mounted) {
+          setPlans(loadPlans());
+          setProfileName(effectiveData.profileName || "林溪");
+          setAvatarUrl(nextAvatarUrl);
+          setTheme(effectiveData.theme);
+          setDataRevision((value) => value + 1);
         }
         hydrationSucceeded = true;
       } catch (error) {
@@ -136,7 +109,6 @@ function App() {
       }
     };
 
-    void supabase.auth.getSession().then(({ data }) => hydrate(data.session));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       void hydrate(nextSession);
     });
@@ -442,7 +414,6 @@ function App() {
       )}
       <AuthScreen
         open={showAuthModal}
-        hasPendingMigration={hasPendingMigration}
         onClose={() => setShowAuthModal(false)}
         onAuthenticated={(name) => {
           if (name) setProfileName(name);

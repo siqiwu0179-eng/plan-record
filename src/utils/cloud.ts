@@ -20,36 +20,6 @@ const keys = {
   travelRoutes: "travel-routes-v1",
 } as const;
 
-const PENDING_MIGRATION_KEY = "plan-record-pending-cloud-migration-v1";
-const COMPLETED_MIGRATION_KEY = "plan-record-completed-cloud-migration-v1";
-const DEFAULT_PROFILE_NAME = "林溪";
-const DEFAULT_MOTTOS = new Set([
-  "专注当下，记录成长，遇见更好的自己。",
-  "把今天过好，就是最可靠的进步。",
-]);
-
-const hasStoredEntries = (raw: string | null, kind: "object" | "array") => {
-  if (!raw) return false;
-  try {
-    const value = JSON.parse(raw);
-    return kind === "array"
-      ? Array.isArray(value) && value.length > 0
-      : value && typeof value === "object" && Object.keys(value).length > 0;
-  } catch {
-    return false;
-  }
-};
-
-const hasStoredTasks = (raw: string | null) => {
-  if (!raw) return false;
-  try {
-    const weeks = Object.values(JSON.parse(raw) as Record<string, { days?: Array<{ tasks?: unknown[] }> }>);
-    return weeks.some((week) => week.days?.some((day) => (day.tasks?.length ?? 0) > 0));
-  } catch {
-    return false;
-  }
-};
-
 const readLocalData = (): CloudData => ({
   profileName: localStorage.getItem(keys.profileName) || "林溪",
   avatarPath: null,
@@ -62,67 +32,15 @@ const readLocalData = (): CloudData => ({
 
 export const getLocalCloudData = readLocalData;
 
-export const capturePendingMigration = (): CloudData | null => {
-  const existing = localStorage.getItem(PENDING_MIGRATION_KEY);
-  if (existing) {
-    if (localStorage.getItem(COMPLETED_MIGRATION_KEY) === "true") return null;
-    try {
-      const parsed = JSON.parse(existing) as Partial<CloudData>;
-      return {
-        profileName: parsed.profileName || "林溪",
-        avatarPath: null,
-        motto: parsed.motto || "把今天过好，就是最可靠的进步。",
-        theme: parsed.theme === "dark" ? "dark" : "light",
-        plans: parsed.plans || "{}",
-        moods: parsed.moods || "{}",
-        travelRoutes: parsed.travelRoutes || "[]",
-      };
-    } catch {
-      return null;
-    }
-  }
-
-  const storedName = localStorage.getItem(keys.profileName);
-  const storedMotto = localStorage.getItem(keys.motto);
-  const hasLegacyData = Boolean(
-    (storedName && storedName !== DEFAULT_PROFILE_NAME)
-    || (storedMotto && !DEFAULT_MOTTOS.has(storedMotto))
-    || hasStoredTasks(localStorage.getItem(keys.plans))
-    || hasStoredEntries(localStorage.getItem(keys.moods), "object")
-    || hasStoredEntries(localStorage.getItem(keys.travelRoutes), "array"),
-  );
-  if (!hasLegacyData) return null;
-
-  const snapshot = readLocalData();
-  localStorage.setItem(PENDING_MIGRATION_KEY, JSON.stringify(snapshot));
-  return snapshot;
-};
-
-export const getPendingMigration = (): CloudData | null => {
-  if (localStorage.getItem(COMPLETED_MIGRATION_KEY) === "true") return null;
-  const raw = localStorage.getItem(PENDING_MIGRATION_KEY);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw) as Partial<CloudData>;
-    return {
-      profileName: parsed.profileName || "林溪",
-      avatarPath: null,
-      motto: parsed.motto || "把今天过好，就是最可靠的进步。",
-      theme: parsed.theme === "dark" ? "dark" : "light",
-      plans: parsed.plans || "{}",
-      moods: parsed.moods || "{}",
-      travelRoutes: parsed.travelRoutes || "[]",
-    };
-  } catch {
-    return null;
-  }
-};
-
-export const completePendingMigration = () => {
-  // Keep the original migration snapshot as a local recovery copy.
-  // The completion marker prevents it from being imported more than once.
-  localStorage.setItem(COMPLETED_MIGRATION_KEY, "true");
-};
+export const createInitialCloudData = (session: Session): CloudData => ({
+  profileName: String(session.user.user_metadata?.full_name ?? "").trim() || "林溪",
+  avatarPath: null,
+  motto: "把今天过好，就是最可靠的进步。",
+  theme: "light",
+  plans: "{}",
+  moods: "{}",
+  travelRoutes: "[]",
+});
 
 export const clearLocalUserData = () => {
   localStorage.removeItem(keys.profileName);
