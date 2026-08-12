@@ -21,6 +21,7 @@ const keys = {
 } as const;
 
 const PENDING_MIGRATION_KEY = "plan-record-pending-cloud-migration-v1";
+const COMPLETED_MIGRATION_KEY = "plan-record-completed-cloud-migration-v1";
 const DEFAULT_PROFILE_NAME = "林溪";
 const DEFAULT_MOTTOS = new Set([
   "专注当下，记录成长，遇见更好的自己。",
@@ -64,6 +65,7 @@ export const getLocalCloudData = readLocalData;
 export const capturePendingMigration = (): CloudData | null => {
   const existing = localStorage.getItem(PENDING_MIGRATION_KEY);
   if (existing) {
+    if (localStorage.getItem(COMPLETED_MIGRATION_KEY) === "true") return null;
     try {
       const parsed = JSON.parse(existing) as Partial<CloudData>;
       return {
@@ -97,6 +99,7 @@ export const capturePendingMigration = (): CloudData | null => {
 };
 
 export const getPendingMigration = (): CloudData | null => {
+  if (localStorage.getItem(COMPLETED_MIGRATION_KEY) === "true") return null;
   const raw = localStorage.getItem(PENDING_MIGRATION_KEY);
   if (!raw) return null;
   try {
@@ -116,7 +119,9 @@ export const getPendingMigration = (): CloudData | null => {
 };
 
 export const completePendingMigration = () => {
-  localStorage.removeItem(PENDING_MIGRATION_KEY);
+  // Keep the original migration snapshot as a local recovery copy.
+  // The completion marker prevents it from being imported more than once.
+  localStorage.setItem(COMPLETED_MIGRATION_KEY, "true");
 };
 
 export const clearLocalUserData = () => {

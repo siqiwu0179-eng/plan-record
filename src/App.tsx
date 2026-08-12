@@ -212,7 +212,7 @@ function App() {
         [activeWeekStart]: updatedWeek,
       };
       savePlans(nextPlans);
-      if (session) void saveCloudData(session, getLocalCloudData());
+      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
       return nextPlans;
     });
   };
@@ -222,7 +222,7 @@ function App() {
     if (nextPlans !== plans) {
       setPlans(nextPlans);
       savePlans(nextPlans);
-      if (session) void saveCloudData(session, getLocalCloudData());
+      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(weekStartDate);
@@ -234,7 +234,7 @@ function App() {
     if (nextPlans !== plans) {
       setPlans(nextPlans);
       savePlans(nextPlans);
-      if (session) void saveCloudData(session, getLocalCloudData());
+      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(date);
