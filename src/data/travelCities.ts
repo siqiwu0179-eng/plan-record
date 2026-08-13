@@ -209,6 +209,8 @@ const citySeeds: CitySeed[] = [
   ["sydney", "悉尼", "澳大利亚", -33.8688, 151.2093, "oceania", "Sydney Australia"],
   ["melbourne", "墨尔本", "澳大利亚", -37.8136, 144.9631, "oceania", "Melbourne Australia"],
   ["brisbane", "布里斯班", "澳大利亚", -27.4698, 153.0251, "oceania", "Brisbane Australia"],
+  ["cairns", "凯恩斯", "澳大利亚", -16.9186, 145.7781, "oceania", "Cairns Queensland Australia"],
+  ["whitsunday", "圣灵群岛", "澳大利亚", -20.276, 148.945, "oceania", "Whitsunday Islands Hamilton Island Australia"],
   ["perth", "珀斯", "澳大利亚", -31.9523, 115.8613, "oceania", "Perth Australia"],
   ["adelaide", "阿德莱德", "澳大利亚", -34.9285, 138.6007, "oceania", "Adelaide Australia"],
   ["auckland", "奥克兰", "新西兰", -36.8509, 174.7645, "oceania", "Auckland New Zealand"],

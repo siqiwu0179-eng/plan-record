@@ -108,6 +108,7 @@ function StatCard({
 const mapWidth = 960;
 const mapHeight = 540;
 const minimumMapZoom = 1.06;
+const maximumMapZoom = 6;
 
 // The illustration is Pacific-centred and slightly compressed horizontally.
 // Project every city from its real coordinates instead of maintaining a small
@@ -322,7 +323,7 @@ function WorldTravelMap({
     panY: number;
   } | null>(null);
 
-  const clampZoom = (value: number) => Math.max(minimumMapZoom, Math.min(2.5, value));
+  const clampZoom = (value: number) => Math.max(minimumMapZoom, Math.min(maximumMapZoom, value));
   const clampPan = (x: number, y: number, scale = zoom) => {
     const maxX = (mapWidth * (scale - 1)) / 2;
     const maxY = (mapHeight * (scale - 1)) / 2;
@@ -570,7 +571,7 @@ function WorldTravelMap({
         <button
           type="button"
           onClick={() => updateZoom(0.25)}
-          disabled={zoom >= 2.5}
+          disabled={zoom >= maximumMapZoom}
           className="flex h-9 w-10 items-center justify-center border-x border-slate-200 text-slate-600 transition hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-35 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
           aria-label="放大地图"
         >
