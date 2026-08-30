@@ -22,7 +22,7 @@ import {
   readTravelRoutes,
   type TravelRoute,
 } from "../utils/travel";
-import { notifyDataChanged } from "../utils/cloud";
+import { removeTravelRoute, saveTravelRoute } from "../utils/cloud";
 import { Sidebar } from "./Sidebar";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import type { WorkspaceView } from "../views";
@@ -744,7 +744,6 @@ export function TravelDashboard({
 
   useEffect(() => {
     window.localStorage.setItem(TRAVEL_ROUTES_STORAGE_KEY, JSON.stringify(routes));
-    notifyDataChanged();
   }, [routes]);
 
   const visitedCityIds = useMemo(
@@ -808,18 +807,20 @@ export function TravelDashboard({
     if (form.from === form.to || !form.date || !form.endDate || form.endDate < form.date) return;
     setRoutes((current) => {
       if (editingRouteId) {
-        return current.map((route) =>
+        const next = current.map((route) =>
           route.id === editingRouteId ? { ...route, ...form } : route,
         );
+        const index = next.findIndex((route) => route.id === editingRouteId);
+        if (index >= 0) void saveTravelRoute(next[index], index);
+        return next;
       }
-      return [
-        ...current,
-        {
-          id: `route-${Date.now()}`,
-          ...form,
-          color: routeColors[current.length % routeColors.length],
-        },
-      ];
+      const route = {
+        id: `route-${Date.now()}`,
+        ...form,
+        color: routeColors[current.length % routeColors.length],
+      };
+      void saveTravelRoute(route, current.length);
+      return [...current, route];
     });
     closeRouteForm();
   };
@@ -930,7 +931,10 @@ export function TravelDashboard({
                     </button>
                     <button
                       type="button"
-                      onClick={() => setRoutes((current) => current.filter((item) => item.id !== route.id))}
+                      onClick={() => {
+                        setRoutes((current) => current.filter((item) => item.id !== route.id));
+                        void removeTravelRoute(route.id);
+                      }}
                       className="flex h-6 w-6 items-center justify-center rounded-md text-slate-300 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-slate-700"
                       aria-label="删除航线"
                       title="删除航线"

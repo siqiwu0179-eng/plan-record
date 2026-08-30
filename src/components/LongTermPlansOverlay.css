@@ -1,0 +1,34 @@
+.long-term-plans-overlay {
+  position: fixed;
+  z-index: 120;
+  width: 564px;
+  height: 665px;
+  overflow: visible;
+  pointer-events: none;
+  transition: filter 160ms ease;
+}
+
+.long-term-plans-overlay:focus-within {
+  filter: drop-shadow(0 12px 22px rgb(58 88 119 / 0.08));
+}
+
+.long-term-plans-frame {
+  width: 640px;
+  height: 756px;
+  border: 0;
+  background: transparent;
+  transform: scale(0.88);
+  transform-origin: left top;
+  pointer-events: auto;
+}
+
+@media (max-width: 760px) {
+  .long-term-plans-overlay {
+    width: 448px;
+    height: 535px;
+  }
+
+  .long-term-plans-frame {
+    transform: scale(0.7);
+  }
+}

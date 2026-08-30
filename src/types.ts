@@ -29,3 +29,16 @@ export type CategoryMeta = {
   textClass: string;
   iconBgClass: string;
 };
+
+export type LongTermPlanStep = {
+  id: string;
+  title: string;
+  done: boolean;
+};
+
+export type LongTermPlan = {
+  id: string;
+  name: string;
+  color: string;
+  tasks: LongTermPlanStep[];
+};

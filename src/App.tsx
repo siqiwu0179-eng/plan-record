@@ -5,6 +5,7 @@ import { DayCard } from "./components/DayCard";
 import { DashboardPageHeader } from "./components/DashboardPageHeader";
 import { Header } from "./components/Header";
 import { HomeDashboard } from "./components/HomeDashboard";
+import { LongTermPlansOverlay } from "./components/LongTermPlansOverlay";
 import { MoodDashboard } from "./components/MoodDashboard";
 import { Sidebar } from "./components/Sidebar";
 import { TaskBoard } from "./components/TaskBoard";
@@ -20,10 +21,14 @@ import {
   applyCloudData,
   clearLocalUserData,
   createInitialCloudData,
+  flushCloudMutations,
   getLocalCloudData,
   loadAvatarObjectUrl,
   loadCloudData,
-  saveCloudData,
+  removePlanTask,
+  saveInitialCloudData,
+  savePlanTask,
+  saveUserPreferences,
   uploadProfileAvatar,
 } from "./utils/cloud";
 import { setAnalyticsUserId, startAnalytics, trackPageView } from "./utils/analytics";
@@ -57,10 +62,14 @@ function App() {
   useEffect(() => {
     if (!supabase) return;
     let mounted = true;
+    let hydrationVersion = 0;
+    let hydratedUserId: string | null = null;
 
     const hydrate = async (nextSession: Session | null) => {
+      const requestVersion = ++hydrationVersion;
       if (mounted) setCloudReady(false);
       if (!nextSession) {
+        hydratedUserId = null;
         clearLocalUserData();
         if (mounted) {
           setSession(null);
@@ -78,7 +87,7 @@ function App() {
         const effectiveData = cloudData ?? createInitialCloudData(nextSession);
 
         if (!cloudData) {
-          await saveCloudData(nextSession, effectiveData);
+          await saveInitialCloudData(nextSession, effectiveData);
         }
 
         applyCloudData(effectiveData);
@@ -90,26 +99,29 @@ function App() {
             console.error("Unable to load profile avatar", error);
           }
         }
-        if (mounted) {
+        if (mounted && requestVersion === hydrationVersion) {
           setPlans(loadPlans());
           setProfileName(effectiveData.profileName || "林溪");
           setAvatarUrl(nextAvatarUrl);
           setTheme(effectiveData.theme);
           setDataRevision((value) => value + 1);
         }
+        hydratedUserId = nextSession.user.id;
         hydrationSucceeded = true;
       } catch (error) {
         console.error("Unable to load plan-record data", error);
       }
 
-      if (mounted) {
+      if (mounted && requestVersion === hydrationVersion) {
         setSession(nextSession);
         setCloudReady(hydrationSucceeded);
         setShowAuthModal(false);
       }
     };
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!(["INITIAL_SESSION", "SIGNED_IN", "SIGNED_OUT"] as string[]).includes(event)) return;
+      if (event === "SIGNED_IN" && nextSession?.user.id === hydratedUserId) return;
       void hydrate(nextSession);
     });
     return () => {
@@ -141,17 +153,22 @@ function App() {
 
   useEffect(() => {
     window.localStorage.setItem("plan-record-profile-name", profileName);
-    if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
+    if (session && cloudReady) void saveUserPreferences(session, getLocalCloudData());
   }, [profileName, session, cloudReady]);
 
   useEffect(() => {
     if (!session || !cloudReady) return;
-    const persist = () => void saveCloudData(session, getLocalCloudData());
+    const persist = () => void saveUserPreferences(session, getLocalCloudData());
     window.addEventListener("plan-record-data-changed", persist);
     return () => window.removeEventListener("plan-record-data-changed", persist);
   }, [session, cloudReady]);
 
   const navigateTo = (view: WorkspaceView) => {
+    if (view !== "home" && !session) {
+      setShowAuthModal(true);
+      setIsSidebarOpen(false);
+      return;
+    }
     setActiveView(view);
     setIsSidebarOpen(false);
   };
@@ -160,12 +177,9 @@ function App() {
     setPlans((currentPlans) => {
       const nextPlans = ensureWeekPlan(currentPlans, activeWeekStart);
       if (nextPlans !== currentPlans) savePlans(nextPlans);
-      if (session && cloudReady && nextPlans !== currentPlans) {
-        void saveCloudData(session, getLocalCloudData());
-      }
       return nextPlans;
     });
-  }, [activeWeekStart, session, cloudReady]);
+  }, [activeWeekStart]);
 
   const activeWeek = useMemo(() => {
     return plans[activeWeekStart] ?? ensureWeekPlan(plans, activeWeekStart)[activeWeekStart];
@@ -184,7 +198,6 @@ function App() {
         [activeWeekStart]: updatedWeek,
       };
       savePlans(nextPlans);
-      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
       return nextPlans;
     });
   };
@@ -194,7 +207,6 @@ function App() {
     if (nextPlans !== plans) {
       setPlans(nextPlans);
       savePlans(nextPlans);
-      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(weekStartDate);
@@ -206,7 +218,6 @@ function App() {
     if (nextPlans !== plans) {
       setPlans(nextPlans);
       savePlans(nextPlans);
-      if (session && cloudReady) void saveCloudData(session, getLocalCloudData());
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(date);
@@ -219,17 +230,22 @@ function App() {
   };
 
   const addTask = (category: Category, title: string) => {
+    const task = createTask(title, category, selectedDay.date);
     updateWeek((week) => ({
       ...week,
       days: week.days.map((day) =>
         day.date === selectedDay.date
-          ? { ...day, tasks: [...day.tasks, createTask(title, category, day.date)] }
+          ? { ...day, tasks: [...day.tasks, task] }
           : day,
       ),
     }));
+    void savePlanTask(task, selectedDay.tasks.length);
   };
 
   const toggleTask = (taskId: string) => {
+    const currentTask = selectedDay.tasks.find((task) => task.id === taskId);
+    if (!currentTask) return;
+    const nextTask = { ...currentTask, completed: !currentTask.completed, updatedAt: new Date().toISOString() };
     updateWeek((week) => ({
       ...week,
       days: week.days.map((day) =>
@@ -237,17 +253,19 @@ function App() {
           ? {
               ...day,
               tasks: day.tasks.map((task) =>
-                task.id === taskId
-                  ? { ...task, completed: !task.completed, updatedAt: new Date().toISOString() }
-                  : task,
+                task.id === taskId ? nextTask : task,
               ),
             }
           : day,
       ),
     }));
+    void savePlanTask(nextTask, selectedDay.tasks.findIndex((task) => task.id === taskId));
   };
 
   const updateTask = (taskId: string, title: string) => {
+    const currentTask = selectedDay.tasks.find((task) => task.id === taskId);
+    if (!currentTask) return;
+    const nextTask = { ...currentTask, title, updatedAt: new Date().toISOString() };
     updateWeek((week) => ({
       ...week,
       days: week.days.map((day) =>
@@ -255,12 +273,13 @@ function App() {
           ? {
               ...day,
               tasks: day.tasks.map((task) =>
-                task.id === taskId ? { ...task, title, updatedAt: new Date().toISOString() } : task,
+                task.id === taskId ? nextTask : task,
               ),
             }
           : day,
       ),
     }));
+    void savePlanTask(nextTask, selectedDay.tasks.findIndex((task) => task.id === taskId));
   };
 
   const deleteTask = (taskId: string) => {
@@ -272,12 +291,14 @@ function App() {
           : day,
       ),
     }));
+    void removePlanTask(taskId);
   };
 
   const handleSignOut = async () => {
     if (!supabase || !session) return;
     try {
-      await saveCloudData(session, getLocalCloudData());
+      await saveUserPreferences(session, getLocalCloudData());
+      await flushCloudMutations();
     } catch (error) {
       console.error("Unable to save data before sign out", error);
       return;
@@ -337,12 +358,19 @@ function App() {
 
         <main className="min-w-0 flex-1">
           {activeView === "home" ? (
-            <HomeDashboard
-              key={`home-${dataRevision}`}
-              week={activeWeek}
-              profileName={session ? profileName : "朋友"}
-              onNavigate={navigateTo}
-            />
+            <>
+              <HomeDashboard
+                key={`home-${dataRevision}`}
+                week={activeWeek}
+                profileName={session ? profileName : "朋友"}
+                onNavigate={navigateTo}
+              />
+              <LongTermPlansOverlay
+                key={`long-term-plans-${session?.user.id ?? "guest"}`}
+                session={session}
+                cloudReady={cloudReady}
+              />
+            </>
           ) : activeView === "mood" ? (
             <MoodDashboard
               key={`mood-${dataRevision}`}

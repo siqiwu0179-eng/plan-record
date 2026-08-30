@@ -25,10 +25,17 @@ const sendEvent = async (
   options: { pageGroup?: "home" | "inner"; viewName?: string; activeSeconds?: number } = {},
 ) => {
   if (!supabase) return;
+  // Supabase can restore its auth session before React has propagated the
+  // session into currentUserId. Resolve the client session here so the first
+  // events after a reload satisfy the authenticated RLS policy.
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  const userId = currentUserId ?? session?.user.id ?? null;
   const { error } = await supabase.from("analytics_events").insert({
     visitor_id: visitorId,
     session_id: sessionId,
-    user_id: currentUserId,
+    user_id: userId,
     event_type: eventType,
     page_group: options.pageGroup ?? null,
     view_name: options.viewName ?? null,
