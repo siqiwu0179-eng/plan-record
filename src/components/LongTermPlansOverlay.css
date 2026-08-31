@@ -30,6 +30,12 @@
   pointer-events: auto;
 }
 
+/* A transparent iframe still intercepts clicks across its full rectangle.
+   When the folder is closed, clip hit-testing to the visible folder itself. */
+.long-term-plans-frame.is-collapsed {
+  clip-path: inset(270px 188px 286px);
+}
+
 @media (max-width: 760px) {
   .long-term-plans-overlay {
     width: 448px;

@@ -108,6 +108,7 @@ export function LongTermPlansOverlay({
   visible: boolean;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
+  const hitAreaObserverRef = useRef<MutationObserver | null>(null);
   const remoteIdsRef = useRef<Set<string>>(new Set());
   const remotePlansRef = useRef<LongTermPlan[]>([]);
   const cloudLoadedRef = useRef(false);
@@ -196,6 +197,16 @@ export function LongTermPlansOverlay({
     style.textContent = frameOverrides;
     childDocument.head.append(style);
 
+    const stage = childDocument.querySelector("#folder-entry-view");
+    const syncHitArea = () => {
+      const collapsed = !stage?.classList.contains("open") && !stage?.classList.contains("closing");
+      frameRef.current?.classList.toggle("is-collapsed", collapsed);
+    };
+    hitAreaObserverRef.current?.disconnect();
+    hitAreaObserverRef.current = stage ? new MutationObserver(syncHitArea) : null;
+    hitAreaObserverRef.current?.observe(stage!, { attributes: true, attributeFilter: ["class"] });
+    syncHitArea();
+
     let dragging = false;
     let moved = false;
     let startScreenX = 0;
@@ -239,6 +250,8 @@ export function LongTermPlansOverlay({
     childDocument.addEventListener("pointercancel", onPointerUp);
   };
 
+  useEffect(() => () => hitAreaObserverRef.current?.disconnect(), []);
+
   return (
     <div
       className={`long-term-plans-overlay ${visible ? "is-visible" : "is-hidden"}`}
@@ -247,7 +260,7 @@ export function LongTermPlansOverlay({
     >
       <iframe
         ref={frameRef}
-        className="long-term-plans-frame"
+        className="long-term-plans-frame is-collapsed"
         src="/long-term-plans/index.html"
         title="Long-term Plans"
         onLoad={prepareFrame}
