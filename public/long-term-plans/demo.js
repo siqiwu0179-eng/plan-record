@@ -285,7 +285,6 @@ function bindStackEvents() {
       project.tasks.push({ id: uid("step"), title, done: false });
       saveProjects();
       renderStack();
-      showToast("Step added");
     });
 
     card.querySelectorAll(".task-row").forEach((row) => bindTaskEvents(project, row));
@@ -392,7 +391,6 @@ function bindTaskEvents(project, row) {
     project.tasks = project.tasks.filter((item) => item.id !== task.id);
     saveProjects();
     renderStack();
-    showToast("Step deleted");
   });
   row.addEventListener("dragstart", (event) => {
     event.stopPropagation();
