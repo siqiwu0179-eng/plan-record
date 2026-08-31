@@ -358,19 +358,12 @@ function App() {
 
         <main className="min-w-0 flex-1">
           {activeView === "home" ? (
-            <>
-              <HomeDashboard
-                key={`home-${dataRevision}`}
-                week={activeWeek}
-                profileName={session ? profileName : "朋友"}
-                onNavigate={navigateTo}
-              />
-              <LongTermPlansOverlay
-                key={`long-term-plans-${session?.user.id ?? "guest"}`}
-                session={session}
-                cloudReady={cloudReady}
-              />
-            </>
+            <HomeDashboard
+              key={`home-${dataRevision}`}
+              week={activeWeek}
+              profileName={session ? profileName : "朋友"}
+              onNavigate={navigateTo}
+            />
           ) : activeView === "mood" ? (
             <MoodDashboard
               key={`mood-${dataRevision}`}
@@ -440,6 +433,12 @@ function App() {
       </div>
       </>
       )}
+      <LongTermPlansOverlay
+        key={`long-term-plans-${session?.user.id ?? "guest"}`}
+        session={session}
+        cloudReady={cloudReady}
+        visible={activeView === "home"}
+      />
       <AuthScreen
         open={showAuthModal}
         onClose={() => setShowAuthModal(false)}

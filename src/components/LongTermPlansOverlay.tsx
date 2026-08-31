@@ -98,7 +98,15 @@ const frameOverrides = `
   .folder-entry-view.open:not(.has-active) #card-stack:has(> .plan-card:nth-child(4):last-child) > .plan-card:not(.active):hover { transform: translateX(-50%) translateY(calc(var(--stack-y) - 24px)) !important; }
 `;
 
-export function LongTermPlansOverlay({ session, cloudReady }: { session: Session | null; cloudReady: boolean }) {
+export function LongTermPlansOverlay({
+  session,
+  cloudReady,
+  visible,
+}: {
+  session: Session | null;
+  cloudReady: boolean;
+  visible: boolean;
+}) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const remoteIdsRef = useRef<Set<string>>(new Set());
   const remotePlansRef = useRef<LongTermPlan[]>([]);
@@ -232,7 +240,11 @@ export function LongTermPlansOverlay({ session, cloudReady }: { session: Session
   };
 
   return (
-    <div className="long-term-plans-overlay" style={{ left: position.left, top: position.top }}>
+    <div
+      className={`long-term-plans-overlay ${visible ? "is-visible" : "is-hidden"}`}
+      style={{ left: position.left, top: position.top }}
+      aria-hidden={!visible}
+    >
       <iframe
         ref={frameRef}
         className="long-term-plans-frame"

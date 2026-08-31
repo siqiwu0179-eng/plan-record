@@ -12,6 +12,14 @@
   filter: drop-shadow(0 12px 22px rgb(58 88 119 / 0.08));
 }
 
+.long-term-plans-overlay.is-hidden {
+  visibility: hidden;
+}
+
+.long-term-plans-overlay.is-hidden .long-term-plans-frame {
+  pointer-events: none;
+}
+
 .long-term-plans-frame {
   width: 640px;
   height: 756px;
