@@ -1,28 +1,7 @@
-const STORAGE_KEY = "plan-record-long-term-plans-demo-v1";
 const PLAN_PALETTE = ["#C7DCCF", "#D8D1E6", "#F6E8B8", "#FFD8B5", "#DDAAA1", "#E6E2DD"];
 const STACK_CARD_DURATION = 700;
 const STACK_CARD_STAGGER = 36;
 const BRIDGE_SOURCE = "plan-record-long-term-plans";
-
-const seedProjects = [
-  { id: "phd-application", name: "PhD Application", color: PLAN_PALETTE[0], tasks: [
-    { id: "phd-1", title: "Shortlist research groups", done: true },
-    { id: "phd-2", title: "Refine research proposal", done: true },
-    { id: "phd-3", title: "Contact potential supervisors", done: false },
-    { id: "phd-4", title: "Prepare application materials", done: false },
-  ]},
-  { id: "job-hunting", name: "Job Hunting", color: PLAN_PALETTE[1], tasks: [
-    { id: "job-1", title: "Update CV and portfolio", done: true },
-    { id: "job-2", title: "Create target company list", done: false },
-    { id: "job-3", title: "Practice case interviews", done: false },
-  ]},
-  { id: "ai-agent-learning", name: "AI Agent Learning", color: PLAN_PALETTE[2], tasks: [
-    { id: "ai-1", title: "Finish agent fundamentals course", done: true },
-    { id: "ai-2", title: "Build a tool-calling prototype", done: true },
-    { id: "ai-3", title: "Study memory and evaluation patterns", done: false },
-    { id: "ai-4", title: "Publish a small agent project", done: false },
-  ]},
-];
 
 const icons = {
   close: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18"/></svg>',
@@ -48,25 +27,15 @@ const stack = document.querySelector("#card-stack");
 const newProjectForm = document.querySelector("#new-project-form");
 const newProjectName = document.querySelector("#new-project-name");
 
-function cloneSeed() { return JSON.parse(JSON.stringify(seedProjects)); }
 function uid(prefix) { return prefix === "project" ? crypto.randomUUID() : `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 function escapeHtml(value) { const node = document.createElement("div"); node.textContent = String(value); return node.innerHTML; }
 
-function loadProjects() {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    const parsed = saved ? JSON.parse(saved) : cloneSeed();
-    if (!Array.isArray(parsed)) return cloneSeed();
-    return parsed.map((project, index) => ({
-      ...project,
-      color: PLAN_PALETTE.includes(project.color) ? project.color : PLAN_PALETTE[index % PLAN_PALETTE.length],
-      tasks: Array.isArray(project.tasks) ? project.tasks : [],
-    }));
-  } catch { return cloneSeed(); }
-}
+let cloudReady = false;
+let cloudSaving = false;
+function loadProjects() { return []; }
 
 function saveProjects() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
+  cloudSaving = true;
   updateFolder();
   if (window.parent !== window) {
     window.parent.postMessage({ source: BRIDGE_SOURCE, type: "projects-changed", projects }, window.location.origin);
@@ -75,6 +44,7 @@ function saveProjects() {
 
 function applyExternalProjects(nextProjects) {
   if (!Array.isArray(nextProjects)) return;
+  cloudReady = true;
   projects = nextProjects.map((project, index) => ({
     id: String(project.id || crypto.randomUUID()),
     name: String(project.name || "Untitled plan"),
@@ -85,7 +55,6 @@ function applyExternalProjects(nextProjects) {
       done: Boolean(task.done),
     })) : [],
   }));
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(projects));
   activeProjectId = null;
   activeOrigin = null;
   editingTaskId = null;
@@ -524,7 +493,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 window.addEventListener("message", (event) => {
-  if (event.origin !== window.location.origin || event.data?.source !== BRIDGE_SOURCE) return;
+  if (event.origin !== window.location.origin || event.source !== window.parent || event.data?.source !== BRIDGE_SOURCE) return;
+  if (event.data.type === "saving") cloudSaving = Boolean(event.data.value);
   if (event.data.type === "set-projects") applyExternalProjects(event.data.projects);
   if (event.data.type === "request-projects" && window.parent !== window) {
     window.parent.postMessage({ source: BRIDGE_SOURCE, type: "ready", projects }, window.location.origin);
@@ -535,3 +505,8 @@ renderStack();
 if (window.parent !== window) {
   window.parent.postMessage({ source: BRIDGE_SOURCE, type: "ready", projects }, window.location.origin);
 }
+
+// Prevent edits before authenticated hydration and overlapping cloud writes.
+for (const name of ["click", "submit", "keydown", "drop"]) document.addEventListener(name, event => {
+  if (!cloudReady || cloudSaving) { event.preventDefault(); event.stopImmediatePropagation(); }
+}, true);

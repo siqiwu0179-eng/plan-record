@@ -16,6 +16,13 @@
   visibility: hidden;
 }
 
+.long-term-plans-overlay.is-page {
+  left: 50%;
+  top: 80px;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
 .long-term-plans-overlay.is-hidden .long-term-plans-frame {
   pointer-events: none;
 }

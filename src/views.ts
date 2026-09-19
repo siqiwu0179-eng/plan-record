@@ -1,1 +1,1 @@
-export type WorkspaceView = "home" | "daily" | "progress" | "travel" | "mood";
+export type WorkspaceView = "home" | "daily" | "longterm" | "progress" | "travel" | "mood";

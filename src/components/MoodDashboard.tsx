@@ -22,6 +22,7 @@ import {
 } from "recharts";
 import { toDateKey } from "../utils/date";
 import {
+  getMonthMoodRecords,
   MOODS,
   MOOD_RECORDS_STORAGE_KEY,
   readMoodRecords,
@@ -78,6 +79,7 @@ export function MoodDashboard({
   }, [records]);
 
   const selected = parseDate(selectedDate);
+  const monthRecords = getMonthMoodRecords(records, selectedDate);
   const calendarYear = selected.getFullYear();
   const calendarMonth = selected.getMonth();
   const calendarCells = useMemo(() => {
@@ -235,16 +237,23 @@ export function MoodDashboard({
                   type="button"
                   key={cell.key}
                   onClick={() => setSelectedDate(cell.key)}
-                  className={`mx-auto flex h-7 w-7 items-center justify-center rounded-full transition ${
+                  className={`relative mx-auto flex h-7 w-7 items-center justify-center rounded-full transition ${
                     cell.key === selectedDate
                       ? "bg-blue-500 text-white ring-4 ring-blue-100"
                       : cell.currentMonth
                         ? "text-slate-800 hover:bg-blue-50"
                         : "text-slate-300 hover:bg-white/50"
                   }`}
-                  aria-label={`选择${cell.key}`}
+                  aria-label={`选择${cell.key}${records[cell.key] ? "，已有心情记录" : ""}`}
+                  title={records[cell.key] ? "已有心情记录" : undefined}
                 >
                   {cell.day}
+                  {records[cell.key] && (
+                    <span
+                      aria-hidden="true"
+                      className={`absolute bottom-0.5 h-1 w-1 rounded-full ${cell.key === selectedDate ? "bg-white" : cell.currentMonth ? "bg-blue-500" : "bg-slate-400"}`}
+                    />
+                  )}
                 </button>
               ))}
             </div>
@@ -258,17 +267,17 @@ export function MoodDashboard({
             <div className="mt-5 grid grid-cols-3 divide-x divide-slate-200 text-center">
               <div>
                 <p className="text-2xl">🙂</p>
-                <b>{Object.values(records).filter((record) => record.mood === 3).length}天</b>
+                <b>{monthRecords.filter((record) => record.mood === 3).length}天</b>
                 <p className="text-xs text-slate-500">平静日</p>
               </div>
               <div>
                 <p className="text-2xl">😊</p>
-                <b>{Object.values(records).filter((record) => record.mood >= 4).length}天</b>
+                <b>{monthRecords.filter((record) => record.mood >= 4).length}天</b>
                 <p className="text-xs text-slate-500">开心日</p>
               </div>
               <div>
                 <p className="text-2xl text-emerald-500">⌁</p>
-                <b>{Object.keys(records).length}天</b>
+                <b>{monthRecords.length}天</b>
                 <p className="text-xs text-slate-500">记录天数</p>
               </div>
             </div>

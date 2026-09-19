@@ -20,6 +20,7 @@ const navigationItems = [
     label: "周完成度",
     icon: ChartNoAxesCombined,
   },
+  { view: "longterm" as const, label: "长期计划", icon: CalendarDays },
   { view: "travel" as const, label: "我的旅行", icon: Plane },
   { view: "mood" as const, label: "心情日记", icon: Heart },
 ];

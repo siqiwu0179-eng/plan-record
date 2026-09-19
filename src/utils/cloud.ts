@@ -278,17 +278,31 @@ export const saveUserPreferences = (session: Session, data = readLocalData()) =>
 
 export const saveInitialCloudData = (session: Session, data: CloudData) => saveUserPreferences(session, data);
 
+const planTaskArgs = (task: Task, sortOrder: number) => ({
+  p_id: task.id,
+  p_task_date: task.date,
+  p_category: task.category,
+  p_title: task.title,
+  p_sort_order: sortOrder,
+  p_completed: task.completed,
+  p_created_at: task.createdAt,
+  p_updated_at: task.updatedAt,
+});
+
 export const savePlanTask = (task: Task, sortOrder: number) =>
-  scheduleRpcMutation("daily plan", "save_plan_task", {
-      p_id: task.id,
-      p_task_date: task.date,
-      p_category: task.category,
-      p_title: task.title,
-      p_sort_order: sortOrder,
-      p_completed: task.completed,
-      p_created_at: task.createdAt,
-      p_updated_at: task.updatedAt,
+  scheduleRpcMutation("daily plan", "save_plan_task", planTaskArgs(task, sortOrder));
+
+// Explicit confirmation for copying a long-term step into an independent daily task.
+// Do not report success or change local daily state until the RPC succeeds.
+export const savePlanTaskConfirmed = async (session: Session, task: Task, sortOrder: number) => {
+  if (!supabase) throw new Error("Supabase 尚未配置");
+  await mutationTail;
+  await retry(async () => {
+    const current = await getCurrentSession();
+    if (!current || current.user.id !== session.user.id) throw new Error("请重新登录后重试");
+    await rpc("save_plan_task", planTaskArgs(task, sortOrder));
   });
+};
 
 export const removePlanTask = (taskId: string, updatedAt = new Date().toISOString()) =>
   scheduleRpcMutation("daily plan deletion", "delete_plan_task", { p_id: taskId, p_updated_at: updatedAt });

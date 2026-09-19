@@ -55,3 +55,8 @@ export const readMoodRecords = (): Record<string, MoodRecord> => {
     return {};
   }
 };
+
+export const getMonthMoodRecords = (records: Record<string, MoodRecord>, date: string): MoodRecord[] =>
+  Object.entries(records)
+    .filter(([key]) => key.slice(0, 7) === date.slice(0, 7))
+    .map(([, record]) => record);

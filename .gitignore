@@ -5,3 +5,17 @@ dist/
 *.tsbuildinfo
 .vercel/
 .env.local
+
+.env
+.env.*
+!.env.example
+planrecord-local-demo/
+feature-demo/
+long-term-plans-demo/
+long-term-plans-preview/
+mobile-demo/
+*.zip
+*.xmind
+.release-audit/
+
+supabase/.temp/

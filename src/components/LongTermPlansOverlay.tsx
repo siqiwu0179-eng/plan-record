@@ -1,11 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { LongTermPlan } from "../types";
-import {
-  loadLongTermPlans,
-  removeLongTermPlan,
-  saveLongTermPlan,
-} from "../utils/cloud";
+import { emptyWorkspace, loadLongTermWorkspace, saveLongTermWorkspace, saveErrorText } from "../utils/longTermCloud";
 import "./LongTermPlansOverlay.css";
 
 type Position = { left: number; top: number };
@@ -102,17 +98,19 @@ export function LongTermPlansOverlay({
   session,
   cloudReady,
   visible,
+  pageMode = false,
 }: {
   session: Session | null;
   cloudReady: boolean;
   visible: boolean;
+  pageMode?: boolean;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const hitAreaObserverRef = useRef<MutationObserver | null>(null);
-  const remoteIdsRef = useRef<Set<string>>(new Set());
-  const remotePlansRef = useRef<LongTermPlan[]>([]);
+  const workspaceRef = useRef(emptyWorkspace());
   const cloudLoadedRef = useRef(false);
-  const bootstrapRef = useRef<string | null>(null);
+  const savingRef = useRef(false);
+  const [error, setError] = useState("");
   const positionKey = `plan-record-long-term-position-home-v1:${session?.user.id ?? "guest"}`;
   const [position, setPosition] = useState<Position>(() => readPosition(positionKey));
   const positionRef = useRef(position);
@@ -122,62 +120,49 @@ export function LongTermPlansOverlay({
     frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "set-projects", projects }, window.location.origin);
   };
 
-  const persistSnapshot = async (projects: LongTermPlan[]) => {
-    if (!session || !cloudReady) return;
-    const nextIds = new Set(projects.map((plan) => plan.id));
-    const deletedIds = [...remoteIdsRef.current].filter((id) => !nextIds.has(id));
-    await Promise.all([
-      ...projects.map((plan, index) => saveLongTermPlan(plan, index)),
-      ...deletedIds.map((id) => removeLongTermPlan(id)),
-    ]);
-    remoteIdsRef.current = nextIds;
-    remotePlansRef.current = projects;
-  };
-
   useEffect(() => {
     const next = readPosition(positionKey);
-    positionRef.current = next;
-    setPosition(next);
+    positionRef.current = next; setPosition(next);
   }, [positionKey]);
 
   useEffect(() => {
-    cloudLoadedRef.current = false;
-    bootstrapRef.current = null;
-    remoteIdsRef.current = new Set();
-    remotePlansRef.current = [];
-    if (!session || !cloudReady) return;
     let cancelled = false;
-    void loadLongTermPlans(session).then((plans) => {
-      if (cancelled) return;
-      remotePlansRef.current = plans;
-      remoteIdsRef.current = new Set(plans.map((plan) => plan.id));
-      cloudLoadedRef.current = true;
-      if (plans.length) sendProjects(plans);
-      else frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "request-projects" }, window.location.origin);
-    }).catch((error) => console.error("Unable to load long-term plans", error));
-    return () => { cancelled = true; };
-  }, [session, cloudReady]);
-
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent<BridgeMessage>) => {
-      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow) return;
-      if (event.data?.source !== BRIDGE_SOURCE) return;
-      const incoming = normalizePlans(event.data.projects);
+    cloudLoadedRef.current = false;
+    workspaceRef.current = emptyWorkspace();
+    sendProjects([]);
+    const load = async () => {
+      if (!session || !cloudReady || savingRef.current) return;
+      try {
+        const workspace = await loadLongTermWorkspace(session.user.id);
+        if (cancelled) return;
+        workspaceRef.current = workspace; cloudLoadedRef.current = true;
+        sendProjects(workspace.plans); setError("");
+      } catch (error) { if (!cancelled) setError(`长期计划读取失败：${saveErrorText(error)}`); }
+    };
+    void load();
+    window.addEventListener("longterm-cloud-updated", load);
+    const receive = async (event: MessageEvent<BridgeMessage>) => {
+      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow || event.data?.source !== BRIDGE_SOURCE) return;
       if (event.data.type === "ready") {
-        if (!session || !cloudReady || !cloudLoadedRef.current) return;
-        if (remotePlansRef.current.length) return sendProjects(remotePlansRef.current);
-        if (bootstrapRef.current === session.user.id) return;
-        bootstrapRef.current = session.user.id;
-        sendProjects(incoming);
-        void persistSnapshot(incoming);
+        if (cloudLoadedRef.current) sendProjects(workspaceRef.current.plans);
+        return;
       }
-      if (event.data.type === "projects-changed" && session && cloudReady && cloudLoadedRef.current) {
-        void persistSnapshot(incoming);
+      if (event.data.type !== "projects-changed") return;
+      if (!session || !cloudReady || !cloudLoadedRef.current || savingRef.current) { sendProjects(workspaceRef.current.plans); return; }
+      savingRef.current = true;
+      frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "saving", value: true }, window.location.origin);
+      try {
+        const saved = await saveLongTermWorkspace(workspaceRef.current, { plans: normalizePlans(event.data.projects), details: workspaceRef.current.details });
+        if (!cancelled) { workspaceRef.current = saved; setError(""); }
+      } catch (error) { if (!cancelled) { setError(saveErrorText(error)); sendProjects(workspaceRef.current.plans); } }
+      finally {
+        savingRef.current = false;
+        frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "saving", value: false }, window.location.origin);
       }
     };
-    window.addEventListener("message", handleMessage);
-    return () => window.removeEventListener("message", handleMessage);
-  }, [session, cloudReady]);
+    window.addEventListener("message", receive);
+    return () => { cancelled = true; window.removeEventListener("longterm-cloud-updated", load); window.removeEventListener("message", receive); };
+  }, [session?.user.id, cloudReady]);
 
   useEffect(() => {
     const handleResize = () => {
@@ -254,10 +239,11 @@ export function LongTermPlansOverlay({
 
   return (
     <div
-      className={`long-term-plans-overlay ${visible ? "is-visible" : "is-hidden"}`}
-      style={{ left: position.left, top: position.top }}
+      className={`long-term-plans-overlay ${visible ? "is-visible" : "is-hidden"} ${pageMode ? "is-page" : ""}`}
+      style={pageMode ? undefined : { left: position.left, top: position.top }}
       aria-hidden={!visible}
     >
+      {error && <p role="alert">{error}</p>}
       <iframe
         ref={frameRef}
         className="long-term-plans-frame is-collapsed"

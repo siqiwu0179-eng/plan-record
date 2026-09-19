@@ -1,9 +1,11 @@
 import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { useRef } from "react";
 import { formatWeekRange } from "../utils/date";
 
 type WeekNavigatorProps = {
   weekStartDate: string;
   weekEndDate: string;
+  onDateSelect?: (date: string) => void;
   onPreviousWeek: () => void;
   onNextWeek: () => void;
   onCurrentWeek: () => void;
@@ -12,10 +14,22 @@ type WeekNavigatorProps = {
 export function WeekNavigator({
   weekStartDate,
   weekEndDate,
+  onDateSelect,
   onPreviousWeek,
   onNextWeek,
   onCurrentWeek,
 }: WeekNavigatorProps) {
+  const dateInputRef = useRef<HTMLInputElement>(null);
+  const openDatePicker = () => {
+    const input = dateInputRef.current;
+    if (!input) return;
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+    } else {
+      input.focus();
+      input.click();
+    }
+  };
   return (
     <section className="flex flex-col gap-4 py-6 lg:flex-row lg:items-center lg:justify-between">
       <div>
@@ -26,6 +40,28 @@ export function WeekNavigator({
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
+        {onDateSelect && (
+          <button
+            type="button"
+            aria-label="选择日期"
+            title="选择日期"
+            onClick={openDatePicker}
+            className="relative flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
+          >
+            <CalendarDays size={20} />
+            <input
+              ref={dateInputRef}
+              type="date"
+              value={weekStartDate}
+              onChange={(event) => {
+                if (event.target.value) onDateSelect(event.target.value);
+              }}
+              className="pointer-events-none absolute h-px w-px opacity-0"
+              tabIndex={-1}
+              aria-hidden="true"
+            />
+          </button>
+        )}
         <button
           className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-700 shadow-sm transition hover:border-blue-200 hover:text-blue-600"
           type="button"

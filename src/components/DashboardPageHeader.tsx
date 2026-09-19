@@ -1,4 +1,5 @@
 import { ArrowLeft, Menu, type LucideIcon } from "lucide-react";
+import { GlobalNavigation } from "./GlobalNavigation";
 
 type DashboardPageHeaderProps = {
   title: string;
@@ -40,6 +41,7 @@ export function DashboardPageHeader({
         </h1>
         {Icon && <Icon className="shrink-0 text-blue-500" size={20} />}
       </div>
+      <GlobalNavigation />
     </header>
   );
 }

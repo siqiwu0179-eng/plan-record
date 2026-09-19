@@ -3,9 +3,11 @@ import type { Session } from "@supabase/supabase-js";
 import { AuthScreen } from "./components/AuthScreen";
 import { DayCard } from "./components/DayCard";
 import { DashboardPageHeader } from "./components/DashboardPageHeader";
+import { NavigationContext } from "./components/GlobalNavigation";
 import { Header } from "./components/Header";
 import { HomeDashboard } from "./components/HomeDashboard";
 import { LongTermPlansOverlay } from "./components/LongTermPlansOverlay";
+import { LongTermReference } from "./components/LongTermReference";
 import { MoodDashboard } from "./components/MoodDashboard";
 import { Sidebar } from "./components/Sidebar";
 import { TaskBoard } from "./components/TaskBoard";
@@ -16,7 +18,7 @@ import { WeeklySummaryCard } from "./components/WeeklySummaryCard";
 import { supabase } from "./lib/supabase";
 import type { Category, WeekPlan } from "./types";
 import { parseDateKey, startOfWeek, toDateKey } from "./utils/date";
-import { createTask, ensureWeekPlan, getRelativeWeekStart, loadPlans, savePlans } from "./utils/storage";
+import { createWeekPlan, createTask, ensureWeekPlan, getRelativeWeekStart, loadPlans, savePlans } from "./utils/storage";
 import {
   applyCloudData,
   clearLocalUserData,
@@ -28,6 +30,7 @@ import {
   removePlanTask,
   saveInitialCloudData,
   savePlanTask,
+  savePlanTaskConfirmed,
   saveUserPreferences,
   uploadProfileAvatar,
 } from "./utils/cloud";
@@ -47,6 +50,7 @@ function App() {
   const initialWeekStart = toDateKey(startOfWeek(new Date()));
   const [plans, setPlans] = useState<StoredPlans>(() => loadPlans());
   const [activeWeekStart, setActiveWeekStart] = useState(initialWeekStart);
+  const [completionWeekStart, setCompletionWeekStart] = useState(initialWeekStart);
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState<WorkspaceView>("home");
@@ -164,7 +168,7 @@ function App() {
   }, [session, cloudReady]);
 
   const navigateTo = (view: WorkspaceView) => {
-    if (view !== "home" && !session) {
+    if (view !== "home" && !session && supabase) {
       setShowAuthModal(true);
       setIsSidebarOpen(false);
       return;
@@ -184,6 +188,8 @@ function App() {
   const activeWeek = useMemo(() => {
     return plans[activeWeekStart] ?? ensureWeekPlan(plans, activeWeekStart)[activeWeekStart];
   }, [activeWeekStart, plans]);
+
+  const completionWeek = useMemo(() => plans[completionWeekStart] ?? createWeekPlan(completionWeekStart), [plans, completionWeekStart]);
 
   const selectedDay = useMemo(() => {
     return activeWeek.days.find((day) => day.date === selectedDate) ?? activeWeek.days[0];
@@ -240,6 +246,22 @@ function App() {
       ),
     }));
     void savePlanTask(task, selectedDay.tasks.length);
+  };
+
+  const addLongTermStepToDaily = async (title: string, category: Category) => {
+    if (!session || !cloudReady) throw new Error("请等待账户数据加载完成后重试");
+    const today = toDateKey(new Date());
+    const weekStart = toDateKey(startOfWeek(parseDateKey(today)));
+    const task = createTask(title, category, today);
+    const currentWeek = ensureWeekPlan(plans, weekStart)[weekStart];
+    await savePlanTaskConfirmed(session, task, currentWeek.days.find(day => day.date === today)?.tasks.length ?? 0);
+    setPlans(current => {
+      const next = ensureWeekPlan(current, weekStart);
+      const week = next[weekStart];
+      const updated = { ...next, [weekStart]: { ...week, days: week.days.map(day => day.date === today ? { ...day, tasks: [...day.tasks, task] } : day) } };
+      savePlans(updated);
+      return updated;
+    });
   };
 
   const toggleTask = (taskId: string) => {
@@ -325,6 +347,7 @@ function App() {
   };
 
   return (
+    <NavigationContext.Provider value={{ activeView, onNavigate: navigateTo }}>
     <div className="workbench-shell min-h-screen text-slate-950 transition-colors dark:text-white">
       {activeView === "travel" ? (
         <TravelDashboard
@@ -363,6 +386,16 @@ function App() {
               week={activeWeek}
               profileName={session ? profileName : "朋友"}
               onNavigate={navigateTo}
+            />
+          ) : activeView === "longterm" ? (
+            <LongTermReference
+              key={`longterm-${session?.user.id ?? "guest"}`}
+              userId={session?.user.id ?? null}
+              cloudReady={cloudReady}
+              onAddDaily={addLongTermStepToDaily}
+              menuOpen={isSidebarOpen}
+              onMenuToggle={() => setIsSidebarOpen((value) => !value)}
+              onBack={() => navigateTo("home")}
             />
           ) : activeView === "mood" ? (
             <MoodDashboard
@@ -420,11 +453,19 @@ function App() {
             onMenuToggle={() => setIsSidebarOpen((value) => !value)}
             onBack={() => navigateTo("home")}
           />
-          <section
-            className="mx-1 grid gap-5 py-6 xl:grid-cols-[minmax(0,1.8fr)_minmax(360px,0.7fr)]"
-          >
-            <WeeklyProgressChart week={activeWeek} darkMode={theme === "dark"} />
-            <WeeklySummaryCard week={activeWeek} />
+          <section className="mx-1">
+            <WeekNavigator
+              weekStartDate={completionWeek.weekStartDate}
+              weekEndDate={completionWeek.weekEndDate}
+              onPreviousWeek={() => setCompletionWeekStart((current) => getRelativeWeekStart(current, -1))}
+              onNextWeek={() => setCompletionWeekStart((current) => getRelativeWeekStart(current, 1))}
+              onDateSelect={(date) => setCompletionWeekStart(toDateKey(startOfWeek(parseDateKey(date))))}
+              onCurrentWeek={() => setCompletionWeekStart(toDateKey(startOfWeek(new Date())))}
+            />
+            <div className="grid gap-5 xl:grid-cols-[minmax(0,1.8fr)_minmax(360px,0.7fr)]">
+              <WeeklyProgressChart week={completionWeek} darkMode={theme === "dark"} />
+              <WeeklySummaryCard week={completionWeek} />
+            </div>
           </section>
           </div>
           </div>
@@ -448,6 +489,7 @@ function App() {
         }}
       />
     </div>
+    </NavigationContext.Provider>
   );
 }
 

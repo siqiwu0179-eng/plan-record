@@ -15,9 +15,9 @@ export const getWeekStats = (week: WeekPlan) => {
   const dayRates = week.days.map((day) => getDayRate(day));
   const totalTasks = week.days.reduce((sum, day) => sum + day.tasks.length, 0);
   const completedTasks = week.days.reduce((sum, day) => sum + countCompleted(day.tasks), 0);
-  const averageRate = Math.round(dayRates.reduce((sum, rate) => sum + rate, 0) / 7);
+  const averageRate = totalTasks ? Math.round((completedTasks / totalTasks) * 100) : 0;
   const highestRate = Math.max(...dayRates);
-  const highestIndex = dayRates.findIndex((rate) => rate === highestRate);
+  const highestIndex = week.days.findIndex((day, index) => day.tasks.length > 0 && dayRates[index] === highestRate);
   const plannedDays = week.days.filter((day) => day.tasks.length > 0).length;
 
   return {

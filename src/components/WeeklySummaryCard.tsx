@@ -9,7 +9,7 @@ type WeeklySummaryCardProps = {
 
 export function WeeklySummaryCard({ week }: WeeklySummaryCardProps) {
   const stats = getWeekStats(week);
-  const highestDay = `${WEEKDAY_LABELS[stats.highestIndex]} ${stats.highestRate}%`;
+  const highestDay = stats.highestIndex < 0 ? "暂无任务" : `${WEEKDAY_LABELS[stats.highestIndex]} ${stats.highestRate}%`;
   const items = [
     { label: "已完成任务", value: stats.completedTasks, icon: CheckCircle2 },
     { label: "总任务数", value: stats.totalTasks, icon: ListChecks },
@@ -27,7 +27,7 @@ export function WeeklySummaryCard({ week }: WeeklySummaryCardProps) {
       </div>
 
       <div className="mt-6 rounded-lg bg-blue-50 p-5">
-        <p className="text-sm font-semibold text-slate-500">本周平均完成度</p>
+        <p className="text-sm font-semibold text-slate-500">本周完成度</p>
         <p className="mt-2 text-5xl font-bold tracking-normal text-blue-600">
           {stats.averageRate}%
         </p>
