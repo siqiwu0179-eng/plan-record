@@ -44,7 +44,13 @@ export function planChanges(before: Workspace, next: PlanState) {
   before.plans.filter(plan => !next.plans.some(item => item.id === plan.id)).forEach(plan => changes.push({ id: plan.id, expected: before.versions[plan.id], patch: { deleted: true } }));
   return changes;
 }
-export async function saveLongTermWorkspace(before: Workspace, next: PlanState): Promise<Workspace> {
+export async function saveLongTermWorkspace(before: Workspace, next: PlanState, expectedUserId?: string): Promise<Workspace> {
+  // A detached queue may outlive a page or account switch. Never send it as another user.
+  if (expectedUserId) {
+    const { data, error } = await client().auth.getSession();
+    if (error) throw error;
+    if (data.session?.user.id !== expectedUserId) throw new Error("账户已切换，请重新登录后重试。");
+  }
   const changes = planChanges(before, next);
   if (!changes.length) return before;
   const { data, error } = await client().rpc("save_long_term_workspace_v2", { p_changes: changes });

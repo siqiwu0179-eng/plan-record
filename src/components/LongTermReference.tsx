@@ -5,7 +5,8 @@ import { DashboardPageHeader } from "./DashboardPageHeader";
 import { CATEGORIES, CATEGORY_META } from "../constants";
 import type { Category, LongTermPlan } from "../types";
 import { blankDetails, rateOf, safeUrl, statusOf, type PlanState, type PlanDetails, type Compass } from "../utils/longTermLocal";
-import { emptyWorkspace, loadLongTermWorkspace, saveLongTermWorkspace, saveLongTermCompass, saveErrorText } from "../utils/longTermCloud";
+import { emptyWorkspace, loadLongTermWorkspace, saveLongTermWorkspace, saveLongTermCompass, saveErrorText, type Workspace } from "../utils/longTermCloud";
+import { createOptimisticSaveQueue, trackPendingSave, waitForPendingSaves } from "../utils/optimisticSaveQueue";
 import "./LongTermReference.css";
 
 const tabs = [{ key: "notes", label: "笔记", icon: FileText }, { key: "resources", label: "相关资料", icon: Link }, { key: "ideas", label: "灵感想法", icon: Lightbulb }] as const;
@@ -24,6 +25,9 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
 }) {
   const workspace = useRef(emptyWorkspace());
   const busy = useRef(false);
+  const planQueue = useRef<ReturnType<typeof createOptimisticSaveQueue<Workspace, PlanState>> | null>(null);
+  const planPending = useRef(false);
+  const [planSaving, setPlanSaving] = useState(false);
   const [ready, setReady] = useState(false);
   const [saving, setSaving] = useState(false);
   const [data, setData] = useState<PlanState>(emptyWorkspace());
@@ -101,14 +105,31 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
   useEffect(() => {
     let cancelled = false;
     setReady(false);
+    planQueue.current?.detach();
+    planQueue.current = null;
+    setPlanSaving(false);
+    planPending.current = false;
     workspace.current = emptyWorkspace();
     setData(emptyWorkspace());
     setCompass(emptyWorkspace().compass);
-    if (userId && cloudReady) void loadLongTermWorkspace(userId).then(next => {
-      if (cancelled) return;
+    if (userId && cloudReady) void waitForPendingSaves(userId).then(() => {
+      if (cancelled) return null;
+      return loadLongTermWorkspace(userId);
+    }).then(next => {
+      if (cancelled || !next) return;
+      planQueue.current = createOptimisticSaveQueue<Workspace, PlanState>(next, {
+        save: (confirmed, value) => saveLongTermWorkspace(confirmed, value, userId),
+        display: value => { if (!cancelled) setData(value); },
+        confirmed: saved => {
+          if (!cancelled) workspace.current = { ...workspace.current, ...saved, compass: workspace.current.compass, compassVersion: workspace.current.compassVersion };
+          window.dispatchEvent(new Event("longterm-cloud-updated"));
+        },
+        failed: error => { if (!cancelled) setError(`${saveErrorText(error)} 未保存的操作已撤回。`); },
+        pending: value => { if (!cancelled) { planPending.current = value; setPlanSaving(value); } },
+      });
       workspace.current = next; setData(next); setCompass(next.compass); setReady(true); setError("");
     }).catch(error => { if (!cancelled) setError(`云端读取失败，请刷新重试。${String(error.message ?? error)}`); });
-    return () => { cancelled = true; };
+    return () => { cancelled = true; planQueue.current?.detach(); planQueue.current = null; };
   }, [userId, cloudReady]);
   useEffect(() => {
     const close = (event: PointerEvent) => { if (!(event.target as Element).closest(".ltr-menu-wrap")) setMenu(null); };
@@ -118,15 +139,26 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
   }, []);
   const commit = async (next: PlanState) => {
     if (!ready || busy.current) return false;
+    if (planPending.current) { setError("步骤正在保存，请稍后再编辑其他内容。"); return false; }
     busy.current = true; setSaving(true);
     try {
       const saved = await saveLongTermWorkspace(workspace.current, next);
-      workspace.current = saved; setData(saved); setError("");
+      workspace.current = saved; planQueue.current?.reset(saved); setData(saved); setError("");
       window.dispatchEvent(new Event("longterm-cloud-updated")); return true;
     } catch (error) { setError(saveErrorText(error)); return false; }
     finally { busy.current = false; setSaving(false); }
   };
+  const toggleStep = (planId: string, stepId: string) => {
+    if (!ready || busy.current || !planQueue.current || !userId) return;
+    const current = planQueue.current.current();
+    const next = { ...current, plans: current.plans.map(plan => plan.id === planId
+      ? { ...plan, tasks: plan.tasks.map(step => step.id === stepId ? { ...step, done: !step.done } : step) }
+      : plan) };
+    setError("");
+    void trackPendingSave(userId, planQueue.current.enqueue(next));
+  };
   const commitCompass = async (next: Compass) => {
+    if (planPending.current) { setError("步骤正在保存，请稍后再保存人生方向。"); return false; }
     if (!ready || busy.current) return false;
     busy.current = true; setSaving(true);
     try {
@@ -135,7 +167,10 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     } catch (error) { setError(saveErrorText(error)); return false; }
     finally { busy.current = false; setSaving(false); }
   };
-  const updatePlan = (change: (plan: LongTermPlan) => LongTermPlan) => selected && commit({ ...data, plans: data.plans.map(plan => plan.id === selected.id ? change(plan) : plan) });
+  const updatePlan = (change: (plan: LongTermPlan) => LongTermPlan) => {
+    const current = planQueue.current?.current() ?? data;
+    return selected && commit({ ...current, plans: current.plans.map(plan => plan.id === selected.id ? change(plan) : plan) });
+  };
   const updateDetails = (patch: Partial<PlanDetails>) => selected && commit({ ...data, details: { ...data.details, [selected.id]: { ...meta, ...patch } } });
   const open = (value: Modal) => { setMenu(null); setError(""); setModal(value); };
   const saveCompass = async () => {
@@ -250,7 +285,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     <div className="inner-page-scroll-room px-3 pb-8 sm:px-4">
       <div className="mx-auto w-full max-w-[1400px]">
         <DashboardPageHeader title="长期计划" menuOpen={menuOpen} onMenuToggle={onMenuToggle} onBack={onBack} />
-        <div className="ltr-content mt-3.5" aria-busy={saving || !ready}>
+        <div className="ltr-content mt-3.5" aria-busy={saving || planSaving || !ready}>
           {!ready && !error && <p role="status">正在读取云端长期计划…</p>}
           <fieldset disabled={!ready || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "contents" }}>
           {error && !modal && <p role="alert">{error}</p>}
@@ -310,7 +345,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
                       onDragEnd={() => { setDragId(null); setDropId(null); }}
                       onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); const index = selected.tasks.findIndex(item => item.id === step.id); const target = selected.tasks[index + (event.key === "ArrowUp" ? -1 : 1)]; if (target) moveStep(step.id, target.id); } }}>
                       <span /><span /><span /><span />
-                    </button><button type="button" role="checkbox" aria-checked={step.done} aria-label={`完成步骤：${step.title}`} className={`ltr-checkbox ${step.done ? "is-checked" : ""}`} onClick={() => updatePlan(plan => ({ ...plan, tasks: plan.tasks.map(item => item.id === step.id ? { ...item, done: !item.done } : item) }))}>{step.done && <Check size={16} strokeWidth={3} />}</button>{stepEdit?.id === step.id ? stepEditor() : <span className={step.done ? "ltr-done" : ""}>{step.title}</span>}{stepEdit?.id !== step.id && <div className="ltr-step-actions">
+                    </button><button type="button" role="checkbox" aria-checked={step.done} aria-label={`完成步骤：${step.title}`} className={`ltr-checkbox ${step.done ? "is-checked" : ""}`} onClick={() => toggleStep(selected.id, step.id)}>{step.done && <Check size={16} strokeWidth={3} />}</button>{stepEdit?.id === step.id ? stepEditor() : <span className={step.done ? "ltr-done" : ""}>{step.title}</span>}{stepEdit?.id !== step.id && <div className="ltr-step-actions">
                     <button type="button" className="ltr-icon-action" title="编辑步骤" aria-label={`编辑步骤：${step.title}`} onClick={() => { setStepEdit({ id: step.id, title: step.title }); setError(""); }}><Pencil size={17} /></button>
                     <button type="button" className="ltr-icon-action ltr-daily-trigger" title="加入每日计划" aria-label={`加入每日计划：${step.title}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setDailyPicker({ title: step.title, left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 310)) }); }}><Plus size={18} /></button>
                     <button type="button" className="ltr-icon-action is-danger" title="删除步骤" aria-label={`删除步骤：${step.title}`} onClick={async () => { if (await updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(item => item.id !== step.id) })) && stepEdit?.id === step.id) setStepEdit(null); }}><Trash2 size={17} /></button>
