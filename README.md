@@ -2,6 +2,10 @@
 
 一个基于 React、TypeScript、Vite、Tailwind CSS、Recharts、Lucide React 和 Supabase 开发的个人计划与生活记录 Dashboard。
 
+## 产品文档
+
+- [Plan & Record 产品需求文档（PRD）](docs/Plan_and_Record_PRD.md)
+
 ## 在线地址
 
 - 正式网站：[https://plan-record-x5d8.vercel.app](https://plan-record-x5d8.vercel.app)
