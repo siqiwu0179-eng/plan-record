@@ -14,6 +14,16 @@ function harness() {
   });
   return { queue, calls, displays, errors, pending };
 }
+function keepDraftHarness() {
+  const calls = [], displays = [], errors = [], pending = [];
+  const queue = createOptimisticSaveQueue({ done: false, version: 0 }, {
+    save: (before, next) => new Promise((resolve, reject) => calls.push({ before, next, resolve, reject })),
+    display: value => displays.push(value), confirmed: () => {},
+    failed: error => errors.push(error), pending: value => pending.push(value),
+    rollbackOnError: false,
+  });
+  return { queue, calls, displays, errors, pending };
+}
 test('immediate display and serialized rapid toggles use latest server version', async () => {
   const h = harness();
   const a = h.queue.enqueue({ done: true, version: 0 });
@@ -41,6 +51,16 @@ test('failure rolls back dependent snapshots and allows retry', async () => {
   const retry = h.queue.enqueue({ done: true, version: 0 });
   h.calls[1].resolve({ done: true, version: 1 });
   assert.equal(await retry, true);
+});
+test('failure can keep the latest visible draft for in-memory editing', async () => {
+  const h = keepDraftHarness();
+  const first = h.queue.enqueue({ done: true, version: 0 });
+  const latest = h.queue.enqueue({ done: false, version: 99 });
+  h.calls[0].reject(new Error('offline'));
+  assert.deepEqual(await Promise.all([first, latest]), [false, false]);
+  assert.deepEqual(h.queue.current(), { done: false, version: 99 });
+  assert.equal(h.displays.at(-1).done, false);
+  assert.equal(h.errors.length, 1);
 });
 test('disposed queue ignores late responses and cancels unsent changes', async () => {
   const h = harness();

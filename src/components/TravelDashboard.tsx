@@ -17,17 +17,17 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cities, formatCityOption, getCity, type City } from "../data/travelCities";
 import {
-  TRAVEL_ROUTES_STORAGE_KEY,
   getTravelSummary,
-  readTravelRoutes,
   type TravelRoute,
 } from "../utils/travel";
-import { removeTravelRoute, saveTravelRoute } from "../utils/cloud";
 import { Sidebar } from "./Sidebar";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import type { WorkspaceView } from "../views";
 
 type TravelDashboardProps = {
+  routes: TravelRoute[];
+  onSaveRoute: (route: TravelRoute, sortOrder: number) => void;
+  onDeleteRoute: (routeId: string) => void;
   sidebarOpen: boolean;
   onSidebarToggle: () => void;
   onBack: (view?: WorkspaceView) => void;
@@ -720,6 +720,9 @@ function DestinationStrip({
 }
 
 export function TravelDashboard({
+  routes,
+  onSaveRoute,
+  onDeleteRoute,
   sidebarOpen,
   onSidebarToggle,
   onBack,
@@ -727,7 +730,6 @@ export function TravelDashboard({
   const [now, setNow] = useState(new Date());
   const [showForm, setShowForm] = useState(false);
   const [editingRouteId, setEditingRouteId] = useState<string | null>(null);
-  const [routes, setRoutes] = useState<TravelRoute[]>(readTravelRoutes);
   const [form, setForm] = useState({
     from: "beijing",
     to: "tokyo",
@@ -741,10 +743,6 @@ export function TravelDashboard({
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(TRAVEL_ROUTES_STORAGE_KEY, JSON.stringify(routes));
-  }, [routes]);
 
   const visitedCityIds = useMemo(
     () => Array.from(new Set(routes.flatMap((route) => [route.from, route.to]))),
@@ -805,23 +803,13 @@ export function TravelDashboard({
 
   const saveRoute = () => {
     if (form.from === form.to || !form.date || !form.endDate || form.endDate < form.date) return;
-    setRoutes((current) => {
-      if (editingRouteId) {
-        const next = current.map((route) =>
-          route.id === editingRouteId ? { ...route, ...form } : route,
-        );
-        const index = next.findIndex((route) => route.id === editingRouteId);
-        if (index >= 0) void saveTravelRoute(next[index], index);
-        return next;
-      }
-      const route = {
-        id: `route-${Date.now()}`,
-        ...form,
-        color: routeColors[current.length % routeColors.length],
-      };
-      void saveTravelRoute(route, current.length);
-      return [...current, route];
-    });
+    if (editingRouteId) {
+      const route = routes.find((item) => item.id === editingRouteId);
+      const index = routes.findIndex((item) => item.id === editingRouteId);
+      if (route && index >= 0) onSaveRoute({ ...route, ...form }, index);
+    } else {
+      onSaveRoute({ id: crypto.randomUUID(), ...form, color: routeColors[routes.length % routeColors.length] }, routes.length);
+    }
     closeRouteForm();
   };
 
@@ -932,8 +920,7 @@ export function TravelDashboard({
                     <button
                       type="button"
                       onClick={() => {
-                        setRoutes((current) => current.filter((item) => item.id !== route.id));
-                        void removeTravelRoute(route.id);
+                        onDeleteRoute(route.id);
                       }}
                       className="flex h-6 w-6 items-center justify-center rounded-md text-slate-300 transition hover:bg-red-50 hover:text-red-500 dark:hover:bg-slate-700"
                       aria-label="删除航线"

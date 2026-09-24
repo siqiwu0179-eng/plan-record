@@ -10,9 +10,9 @@ export type CloudData = {
   avatarPath: string | null;
   motto: string;
   theme: "light" | "dark";
-  plans: string;
-  moods: string;
-  travelRoutes: string;
+  plans: Record<string, WeekPlan>;
+  moods: Record<string, MoodRecord>;
+  travelRoutes: TravelRoute[];
 };
 
 type PlanTaskRow = {
@@ -31,42 +31,21 @@ const keys = {
   profileName: "plan-record-profile-name",
   motto: "plan-record-home-motto",
   theme: "plan-record-theme",
-  plans: "plan-and-record-data-v1",
-  moods: "mood-records-v1",
-  travelRoutes: "travel-routes-v1",
 } as const;
 
-const OUTBOX_KEY = "plan-record-cloud-outbox-v1";
-type OutboxMutation = {
-  id: string;
-  userId: string;
-  label: string;
-  rpcName: string;
-  args: Record<string, unknown>;
-};
+const legacyBusinessKeys = ["plan-and-record-data-v1", "mood-records-v1", "travel-routes-v1", "plan-record-cloud-outbox-v1"];
+export const clearLegacyBusinessCache = () => legacyBusinessKeys.forEach((key) => localStorage.removeItem(key));
 
 let activeUserId: string | null = null;
-
-const readOutbox = (): OutboxMutation[] => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(OUTBOX_KEY) || "[]") as OutboxMutation[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
-
-const writeOutbox = (mutations: OutboxMutation[]) =>
-  localStorage.setItem(OUTBOX_KEY, JSON.stringify(mutations));
 
 const readLocalData = (): CloudData => ({
   profileName: localStorage.getItem(keys.profileName) || "林溪",
   avatarPath: null,
   motto: localStorage.getItem(keys.motto) || "把今天过好，就是最可靠的进步。",
   theme: localStorage.getItem(keys.theme) === "dark" ? "dark" : "light",
-  plans: localStorage.getItem(keys.plans) || "{}",
-  moods: localStorage.getItem(keys.moods) || "{}",
-  travelRoutes: localStorage.getItem(keys.travelRoutes) || "[]",
+  plans: {},
+  moods: {},
+  travelRoutes: [],
 });
 
 export const getLocalCloudData = readLocalData;
@@ -76,27 +55,23 @@ export const createInitialCloudData = (session: Session): CloudData => ({
   avatarPath: null,
   motto: "把今天过好，就是最可靠的进步。",
   theme: "light",
-  plans: "{}",
-  moods: "{}",
-  travelRoutes: "[]",
+  plans: {},
+  moods: {},
+  travelRoutes: [],
 });
 
 export const clearLocalUserData = () => {
   activeUserId = null;
   localStorage.removeItem(keys.profileName);
   localStorage.removeItem(keys.motto);
-  localStorage.setItem(keys.plans, "{}");
-  localStorage.setItem(keys.moods, "{}");
-  localStorage.setItem(keys.travelRoutes, "[]");
+  clearLegacyBusinessCache();
 };
 
 export const applyCloudData = (data: Partial<CloudData>) => {
   if (data.profileName !== undefined) localStorage.setItem(keys.profileName, data.profileName);
   if (data.motto !== undefined) localStorage.setItem(keys.motto, data.motto);
   if (data.theme !== undefined) localStorage.setItem(keys.theme, data.theme);
-  if (data.plans !== undefined) localStorage.setItem(keys.plans, data.plans);
-  if (data.moods !== undefined) localStorage.setItem(keys.moods, data.moods);
-  if (data.travelRoutes !== undefined) localStorage.setItem(keys.travelRoutes, data.travelRoutes);
+  clearLegacyBusinessCache();
 };
 
 const buildPlans = (tasks: PlanTaskRow[], completions: CompletionRow[]) => {
@@ -142,7 +117,6 @@ const buildPlans = (tasks: PlanTaskRow[], completions: CompletionRow[]) => {
 export const loadCloudData = async (session: Session): Promise<CloudData | null> => {
   if (!supabase) return null;
   activeUserId = session.user.id;
-  await replayPendingCloudMutations(session);
   const [profileResult, preferencesResult, taskResult, completionResult, moodResult, travelResult] = await Promise.all([
     supabase.from("profiles").select("display_name, avatar_path").eq("user_id", session.user.id).maybeSingle(),
     supabase.from("user_preferences").select("motto, theme").eq("user_id", session.user.id).maybeSingle(),
@@ -155,8 +129,6 @@ export const loadCloudData = async (session: Session): Promise<CloudData | null>
   for (const result of [profileResult, preferencesResult, taskResult, completionResult, moodResult, travelResult]) {
     if (result.error) throw result.error;
   }
-  if (!preferencesResult.data) return null;
-
   const moods = Object.fromEntries(
     (moodResult.data ?? []).map((row) => [row.record_date, { mood: row.mood, entry: row.entry, tags: row.tags ?? [] }]),
   );
@@ -172,11 +144,11 @@ export const loadCloudData = async (session: Session): Promise<CloudData | null>
   return {
     profileName: profileResult.data?.display_name || "林溪",
     avatarPath: profileResult.data?.avatar_path ?? null,
-    motto: preferencesResult.data.motto,
-    theme: preferencesResult.data.theme === "dark" ? "dark" : "light",
-    plans: JSON.stringify(buildPlans((taskResult.data ?? []) as PlanTaskRow[], (completionResult.data ?? []) as CompletionRow[])),
-    moods: JSON.stringify(moods),
-    travelRoutes: JSON.stringify(travelRoutes),
+    motto: preferencesResult.data?.motto || "把今天过好，就是最可靠的进步。",
+    theme: preferencesResult.data?.theme === "dark" ? "dark" : "light",
+    plans: buildPlans((taskResult.data ?? []) as PlanTaskRow[], (completionResult.data ?? []) as CompletionRow[]),
+    moods,
+    travelRoutes,
   };
 };
 
@@ -219,40 +191,15 @@ const rpc = async (name: string, args: Record<string, unknown>) => {
   if (error) throw error;
 };
 
-const removeOutboxMutation = (id: string) =>
-  writeOutbox(readOutbox().filter((mutation) => mutation.id !== id));
-
 const scheduleRpcMutation = (label: string, rpcName: string, args: Record<string, unknown>) => {
   if (!activeUserId) return Promise.resolve();
-  const mutation: OutboxMutation = {
-    id: crypto.randomUUID(),
-    userId: activeUserId,
-    label,
-    rpcName,
-    args,
-  };
-  writeOutbox([...readOutbox(), mutation]);
+  const userId = activeUserId;
   return enqueueMutation(label, async () => {
     const session = await getCurrentSession();
-    if (!session || session.user.id !== mutation.userId) return;
-    await rpc(mutation.rpcName, mutation.args);
-    removeOutboxMutation(mutation.id);
+    if (!session || session.user.id !== userId) throw new Error("登录状态已变化");
+    await rpc(rpcName, args);
   });
 };
-
-async function replayPendingCloudMutations(session: Session) {
-  for (const mutation of readOutbox().filter((item) => item.userId === session.user.id)) {
-    await retry(() => rpc(mutation.rpcName, mutation.args));
-    removeOutboxMutation(mutation.id);
-  }
-}
-
-window.addEventListener("online", () => {
-  void enqueueMutation("pending changes", async () => {
-    const session = await getCurrentSession();
-    if (session) await replayPendingCloudMutations(session);
-  });
-});
 
 export const flushCloudMutations = () => mutationTail;
 
@@ -276,8 +223,6 @@ export const saveUserPreferences = (session: Session, data = readLocalData()) =>
   return Promise.all([profileSave, preferencesSave]).then(() => undefined);
 };
 
-export const saveInitialCloudData = (session: Session, data: CloudData) => saveUserPreferences(session, data);
-
 const planTaskArgs = (task: Task, sortOrder: number) => ({
   p_id: task.id,
   p_task_date: task.date,
@@ -290,25 +235,13 @@ const planTaskArgs = (task: Task, sortOrder: number) => ({
 });
 
 export const savePlanTask = (task: Task, sortOrder: number) =>
-  scheduleRpcMutation("daily plan", "save_plan_task", planTaskArgs(task, sortOrder));
-
-// Explicit confirmation for copying a long-term step into an independent daily task.
-// Do not report success or change local daily state until the RPC succeeds.
-export const savePlanTaskConfirmed = async (session: Session, task: Task, sortOrder: number) => {
-  if (!supabase) throw new Error("Supabase 尚未配置");
-  await mutationTail;
-  await retry(async () => {
-    const current = await getCurrentSession();
-    if (!current || current.user.id !== session.user.id) throw new Error("请重新登录后重试");
-    await rpc("save_plan_task", planTaskArgs(task, sortOrder));
-  });
-};
+  scheduleRpcMutation("每日计划", "save_plan_task", planTaskArgs(task, sortOrder));
 
 export const removePlanTask = (taskId: string, updatedAt = new Date().toISOString()) =>
-  scheduleRpcMutation("daily plan deletion", "delete_plan_task", { p_id: taskId, p_updated_at: updatedAt });
+  scheduleRpcMutation("每日计划", "delete_plan_task", { p_id: taskId, p_updated_at: updatedAt });
 
 export const saveMoodRecord = (recordDate: string, record: MoodRecord) =>
-  scheduleRpcMutation("mood record", "save_mood_record", {
+  scheduleRpcMutation("心情记录", "save_mood_record", {
     p_record_date: recordDate,
     p_mood: record.mood,
     p_entry: record.entry,
@@ -317,10 +250,10 @@ export const saveMoodRecord = (recordDate: string, record: MoodRecord) =>
   });
 
 export const removeMoodRecord = (recordDate: string) =>
-  scheduleRpcMutation("mood record deletion", "delete_mood_record", { p_record_date: recordDate, p_updated_at: new Date().toISOString() });
+  scheduleRpcMutation("心情记录", "delete_mood_record", { p_record_date: recordDate, p_updated_at: new Date().toISOString() });
 
 export const saveTravelRoute = (route: TravelRoute, sortOrder: number) =>
-  scheduleRpcMutation("travel record", "save_travel_record", {
+  scheduleRpcMutation("旅行记录", "save_travel_record", {
       p_id: route.id,
       p_from_city: route.from,
       p_to_city: route.to,
@@ -332,7 +265,7 @@ export const saveTravelRoute = (route: TravelRoute, sortOrder: number) =>
   });
 
 export const removeTravelRoute = (routeId: string) =>
-  scheduleRpcMutation("travel record deletion", "delete_travel_record", { p_id: routeId, p_updated_at: new Date().toISOString() });
+  scheduleRpcMutation("旅行记录", "delete_travel_record", { p_id: routeId, p_updated_at: new Date().toISOString() });
 
 const normalizeLongTermSteps = (value: unknown): LongTermPlanStep[] => {
   if (!Array.isArray(value)) return [];

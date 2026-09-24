@@ -2,13 +2,15 @@ import { CalendarCheck2, ChartNoAxesCombined, CloudSun, Heart, MapPin, Pencil, P
 import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { WeekPlan } from "../types";
 import { toDateKey } from "../utils/date";
-import { MOODS, readMoodRecords } from "../utils/mood";
+import { MOODS, type MoodRecord } from "../utils/mood";
 import { notifyDataChanged } from "../utils/cloud";
-import { TRAVEL_ROUTES_STORAGE_KEY, getTravelSummary, readTravelRoutes } from "../utils/travel";
+import { getTravelSummary, type TravelRoute } from "../utils/travel";
 import type { WorkspaceView } from "../views";
 
 type HomeDashboardProps = {
   week: WeekPlan;
+  moodRecords: Record<string, MoodRecord>;
+  travelRoutes: TravelRoute[];
   profileName: string;
   onNavigate: (view: WorkspaceView) => void;
 };
@@ -36,7 +38,7 @@ const weatherLabel = (code: number) => {
   return "天气变化";
 };
 
-export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardProps) {
+export function HomeDashboard({ week, moodRecords, travelRoutes, profileName, onNavigate }: HomeDashboardProps) {
   const [now, setNow] = useState(new Date());
   const [editingMotto, setEditingMotto] = useState(false);
   const [motto, setMotto] = useState(
@@ -44,7 +46,7 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
   );
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
   const [weatherError, setWeatherError] = useState(false);
-  const [travelSummary, setTravelSummary] = useState(() => getTravelSummary(readTravelRoutes()));
+  const travelSummary = useMemo(() => getTravelSummary(travelRoutes), [travelRoutes]);
   useEffect(() => {
     const timer = window.setInterval(() => setNow(new Date()), 1000);
     return () => window.clearInterval(timer);
@@ -53,20 +55,6 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
     window.localStorage.setItem("plan-record-home-motto", motto);
     notifyDataChanged();
   }, [motto]);
-  useEffect(() => {
-    const syncTravelSummary = () => {
-      setTravelSummary(getTravelSummary(readTravelRoutes()));
-    };
-    const handleTravelStorage = (event: StorageEvent) => {
-      if (event.key === TRAVEL_ROUTES_STORAGE_KEY) syncTravelSummary();
-    };
-    window.addEventListener("storage", handleTravelStorage);
-    window.addEventListener("focus", syncTravelSummary);
-    return () => {
-      window.removeEventListener("storage", handleTravelStorage);
-      window.removeEventListener("focus", syncTravelSummary);
-    };
-  }, []);
   useEffect(() => {
     let disposed = false;
     const controller = new AbortController();
@@ -115,7 +103,7 @@ export function HomeDashboard({ week, profileName, onNavigate }: HomeDashboardPr
   const greeting = now.getHours() < 12 ? "早上好" : now.getHours() < 18 ? "下午好" : "晚上好";
   const date = new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "long", day: "numeric", weekday: "short" }).format(now);
   const todayKey = toDateKey(now);
-  const todayMood = readMoodRecords()[todayKey];
+  const todayMood = moodRecords[todayKey];
   const todayMoodLabel = todayMood ? MOODS[todayMood.mood - 1] ?? MOODS[2] : null;
   const dayRates = useMemo(
     () => week.days.map((day) => {

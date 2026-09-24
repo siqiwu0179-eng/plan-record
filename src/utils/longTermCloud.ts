@@ -57,7 +57,12 @@ export async function saveLongTermWorkspace(before: Workspace, next: PlanState, 
   if (error) throw error;
   return { ...before, ...next, versions: { ...before.versions, ...data } };
 }
-export async function saveLongTermCompass(before: Workspace, next: Compass): Promise<Workspace> {
+export async function saveLongTermCompass(before: Workspace, next: Compass, expectedUserId?: string): Promise<Workspace> {
+  if (expectedUserId) {
+    const { data, error } = await client().auth.getSession();
+    if (error) throw error;
+    if (data.session?.user.id !== expectedUserId) throw new Error("账户已切换，请重新登录后重试。");
+  }
   const { data, error } = await client().rpc("save_long_term_compass_v2", { p_value: next, p_expected: before.compassVersion });
   if (error) throw error;
   return { ...before, compass: next, compassVersion: data };

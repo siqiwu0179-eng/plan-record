@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import type { LongTermPlan } from "../types";
-import { emptyWorkspace, loadLongTermWorkspace, saveLongTermWorkspace, saveErrorText } from "../utils/longTermCloud";
+import { getLongTermStore } from "../utils/longTermStore";
 import "./LongTermPlansOverlay.css";
 
 type Position = { left: number; top: number };
@@ -107,10 +107,6 @@ export function LongTermPlansOverlay({
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const hitAreaObserverRef = useRef<MutationObserver | null>(null);
-  const workspaceRef = useRef(emptyWorkspace());
-  const cloudLoadedRef = useRef(false);
-  const savingRef = useRef(false);
-  const [error, setError] = useState("");
   const positionKey = `plan-record-long-term-position-home-v1:${session?.user.id ?? "guest"}`;
   const [position, setPosition] = useState<Position>(() => readPosition(positionKey));
   const positionRef = useRef(position);
@@ -126,42 +122,38 @@ export function LongTermPlansOverlay({
   }, [positionKey]);
 
   useEffect(() => {
-    let cancelled = false;
-    cloudLoadedRef.current = false;
-    workspaceRef.current = emptyWorkspace();
     sendProjects([]);
-    const load = async () => {
-      if (!session || !cloudReady || savingRef.current) return;
-      try {
-        const workspace = await loadLongTermWorkspace(session.user.id);
-        if (cancelled) return;
-        workspaceRef.current = workspace; cloudLoadedRef.current = true;
-        sendProjects(workspace.plans); setError("");
-      } catch (error) { if (!cancelled) setError(`长期计划读取失败：${saveErrorText(error)}`); }
-    };
-    void load();
-    window.addEventListener("longterm-cloud-updated", load);
-    const receive = async (event: MessageEvent<BridgeMessage>) => {
-      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow || event.data?.source !== BRIDGE_SOURCE) return;
-      if (event.data.type === "ready") {
-        if (cloudLoadedRef.current) sendProjects(workspaceRef.current.plans);
-        return;
-      }
-      if (event.data.type !== "projects-changed") return;
-      if (!session || !cloudReady || !cloudLoadedRef.current || savingRef.current) { sendProjects(workspaceRef.current.plans); return; }
-      savingRef.current = true;
+    if (!session || !cloudReady) {
       frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "saving", value: true }, window.location.origin);
-      try {
-        const saved = await saveLongTermWorkspace(workspaceRef.current, { plans: normalizePlans(event.data.projects), details: workspaceRef.current.details });
-        if (!cancelled) { workspaceRef.current = saved; setError(""); }
-      } catch (error) { if (!cancelled) { setError(saveErrorText(error)); sendProjects(workspaceRef.current.plans); } }
-      finally {
-        savingRef.current = false;
-        frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "saving", value: false }, window.location.origin);
+      return;
+    }
+    const store = getLongTermStore(session.user.id);
+    let lastProjects = "";
+    const sync = () => {
+      const current = store.getSnapshot();
+      const signature = JSON.stringify(current.workspace.plans);
+      if (current.ready && signature !== lastProjects) {
+        lastProjects = signature;
+        sendProjects(current.workspace.plans);
       }
+      frameRef.current?.contentWindow?.postMessage({ source: BRIDGE_SOURCE, type: "saving", value: !current.ready }, window.location.origin);
+    };
+    const unsubscribe = store.subscribe(sync);
+    sync();
+    void store.refresh();
+    const receive = (event: MessageEvent<BridgeMessage>) => {
+      if (event.origin !== window.location.origin || event.source !== frameRef.current?.contentWindow || event.data?.source !== BRIDGE_SOURCE) return;
+      if (event.data.type === "ready") { lastProjects = ""; sync(); return; }
+      if (event.data.type !== "projects-changed") return;
+      const current = store.getSnapshot();
+      if (!current.ready) { sync(); return; }
+      const projects = normalizePlans(event.data.projects);
+      // The iframe already rendered its own edit; echoing it would close the folder/editor.
+      lastProjects = JSON.stringify(projects);
+      store.updatePlans({ plans: projects, details: current.workspace.details });
     };
     window.addEventListener("message", receive);
-    return () => { cancelled = true; window.removeEventListener("longterm-cloud-updated", load); window.removeEventListener("message", receive); };
+    return () => { unsubscribe(); window.removeEventListener("message", receive); };
   }, [session?.user.id, cloudReady]);
 
   useEffect(() => {
@@ -233,6 +225,17 @@ export function LongTermPlansOverlay({
     childDocument.addEventListener("pointermove", onPointerMove, { passive: false });
     childDocument.addEventListener("pointerup", onPointerUp);
     childDocument.addEventListener("pointercancel", onPointerUp);
+
+    // The iframe can finish before the React message listener is attached.
+    // Hydrate it again on load so its first interaction is never blocked.
+    if (session && cloudReady) {
+      const current = getLongTermStore(session.user.id).getSnapshot();
+      if (current.ready) sendProjects(current.workspace.plans);
+      frameRef.current?.contentWindow?.postMessage(
+        { source: BRIDGE_SOURCE, type: "saving", value: !current.ready },
+        window.location.origin,
+      );
+    }
   };
 
   useEffect(() => () => hitAreaObserverRef.current?.disconnect(), []);
@@ -243,7 +246,6 @@ export function LongTermPlansOverlay({
       style={pageMode ? undefined : { left: position.left, top: position.top }}
       aria-hidden={!visible}
     >
-      {error && <p role="alert">{error}</p>}
       <iframe
         ref={frameRef}
         className="long-term-plans-frame is-collapsed"

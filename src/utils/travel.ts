@@ -9,8 +9,6 @@ export type TravelRoute = {
   color: string;
 };
 
-export const TRAVEL_ROUTES_STORAGE_KEY = "travel-routes-v1";
-
 export const INITIAL_TRAVEL_ROUTES: TravelRoute[] = [
   { id: "route-1", from: "beijing", to: "tokyo", date: "2026-01-18", endDate: "2026-01-22", color: "#3b82f6" },
   { id: "route-2", from: "tokyo", to: "singapore", date: "2026-03-22", endDate: "2026-03-27", color: "#10b981" },
@@ -31,25 +29,6 @@ const distanceKm = (from: City, to: City) => {
       Math.cos(toRadians(to.lat)) *
       Math.sin(lngDistance / 2) ** 2;
   return Math.round(earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-};
-
-export const readTravelRoutes = () => {
-  const stored = window.localStorage.getItem(TRAVEL_ROUTES_STORAGE_KEY);
-  if (!stored) return [];
-
-  try {
-    const routes = JSON.parse(stored) as TravelRoute[];
-    if (!Array.isArray(routes)) return [];
-    return routes.map((route) => ({
-      ...route,
-      endDate:
-        route.endDate ??
-        INITIAL_TRAVEL_ROUTES.find((initialRoute) => initialRoute.id === route.id)?.endDate ??
-        route.date,
-    }));
-  } catch {
-    return [];
-  }
 };
 
 export const getTravelSummary = (routes: TravelRoute[]) => ({

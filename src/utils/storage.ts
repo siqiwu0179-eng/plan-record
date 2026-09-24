@@ -2,8 +2,6 @@ import { CATEGORIES } from "../constants";
 import type { Category, DayPlan, Task, WeekPlan } from "../types";
 import { addDays, getWeekDateKeys, parseDateKey, startOfWeek, toDateKey } from "./date";
 
-const STORAGE_KEY = "plan-and-record-data-v1";
-
 type StoredPlans = Record<string, WeekPlan>;
 
 const sampleTasks: Record<Category, string[]> = {
@@ -18,30 +16,6 @@ const makeId = (): string => {
     return crypto.randomUUID();
   }
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-};
-
-const readPlans = (): StoredPlans => {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return {};
-    return JSON.parse(raw) as StoredPlans;
-  } catch {
-    return {};
-  }
-};
-
-export const savePlans = (plans: StoredPlans): void => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(plans));
-};
-
-export const loadPlans = (): StoredPlans => {
-  const plans = readPlans();
-  if (Object.keys(plans).length > 0) return plans;
-
-  const currentWeekStart = toDateKey(startOfWeek(new Date()));
-  const initialPlans = { [currentWeekStart]: createWeekPlan(currentWeekStart) };
-  savePlans(initialPlans);
-  return initialPlans;
 };
 
 export const createWeekPlan = (weekStartDate: string, withSampleData = false): WeekPlan => {

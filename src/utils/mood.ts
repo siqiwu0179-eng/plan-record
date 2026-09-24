@@ -1,5 +1,3 @@
-export const MOOD_RECORDS_STORAGE_KEY = "mood-records-v1";
-
 export const MOODS = [
   ["☹️", "低落"],
   ["😕", "有点低落"],
@@ -40,20 +38,6 @@ export const INITIAL_MOOD_RECORDS: Record<string, MoodRecord> = {
   "2026-08-07": { mood: 2, entry: "", tags: ["有一点疲惫"] },
   "2026-08-08": { mood: 4, entry: "", tags: ["放松"] },
   "2026-08-09": { mood: 3, entry: "", tags: [] },
-};
-
-export const readMoodRecords = (): Record<string, MoodRecord> => {
-  const stored = window.localStorage.getItem(MOOD_RECORDS_STORAGE_KEY);
-  if (!stored) return {};
-
-  try {
-    const parsed = JSON.parse(stored) as Record<string, MoodRecord>;
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? parsed
-      : {};
-  } catch {
-    return {};
-  }
 };
 
 export const getMonthMoodRecords = (records: Record<string, MoodRecord>, date: string): MoodRecord[] =>

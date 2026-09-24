@@ -15,25 +15,31 @@ import { TravelDashboard } from "./components/TravelDashboard";
 import { WeekNavigator } from "./components/WeekNavigator";
 import { WeeklyProgressChart } from "./components/WeeklyProgressChart";
 import { WeeklySummaryCard } from "./components/WeeklySummaryCard";
+import { clearLongTermStores, getLongTermStore } from "./utils/longTermStore";
 import { supabase } from "./lib/supabase";
 import type { Category, WeekPlan } from "./types";
 import { parseDateKey, startOfWeek, toDateKey } from "./utils/date";
-import { createWeekPlan, createTask, ensureWeekPlan, getRelativeWeekStart, loadPlans, savePlans } from "./utils/storage";
+import { createWeekPlan, createTask, ensureWeekPlan, getRelativeWeekStart } from "./utils/storage";
 import {
   applyCloudData,
+  clearLegacyBusinessCache,
   clearLocalUserData,
   createInitialCloudData,
   flushCloudMutations,
   getLocalCloudData,
   loadAvatarObjectUrl,
   loadCloudData,
+  removeMoodRecord,
   removePlanTask,
-  saveInitialCloudData,
+  removeTravelRoute,
+  saveMoodRecord,
   savePlanTask,
-  savePlanTaskConfirmed,
+  saveTravelRoute,
   saveUserPreferences,
   uploadProfileAvatar,
 } from "./utils/cloud";
+import type { MoodRecord } from "./utils/mood";
+import type { TravelRoute } from "./utils/travel";
 import { setAnalyticsUserId, startAnalytics, trackPageView } from "./utils/analytics";
 import type { WorkspaceView } from "./views";
 
@@ -43,12 +49,14 @@ type Theme = "light" | "dark";
 function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
-  const [dataRevision, setDataRevision] = useState(0);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [cloudReady, setCloudReady] = useState(false);
 
   const initialWeekStart = toDateKey(startOfWeek(new Date()));
-  const [plans, setPlans] = useState<StoredPlans>(() => loadPlans());
+  const [plans, setPlans] = useState<StoredPlans>(() => ({ [initialWeekStart]: createWeekPlan(initialWeekStart) }));
+  const [moodRecords, setMoodRecords] = useState<Record<string, MoodRecord>>({});
+  const [travelRoutes, setTravelRoutes] = useState<TravelRoute[]>([]);
+  const [saveError, setSaveError] = useState("");
   const [activeWeekStart, setActiveWeekStart] = useState(initialWeekStart);
   const [completionWeekStart, setCompletionWeekStart] = useState(initialWeekStart);
   const [selectedDate, setSelectedDate] = useState(toDateKey(new Date()));
@@ -71,28 +79,30 @@ function App() {
 
     const hydrate = async (nextSession: Session | null) => {
       const requestVersion = ++hydrationVersion;
+      if (!nextSession || (hydratedUserId && hydratedUserId !== nextSession.user.id)) clearLongTermStores();
       if (mounted) setCloudReady(false);
       if (!nextSession) {
         hydratedUserId = null;
         clearLocalUserData();
         if (mounted) {
           setSession(null);
-          setPlans(loadPlans());
+          setPlans({ [initialWeekStart]: createWeekPlan(initialWeekStart) });
+          setMoodRecords({});
+          setTravelRoutes([]);
           setProfileName("林溪");
           setAvatarUrl(null);
-          setDataRevision((value) => value + 1);
         }
         return;
       }
 
       let hydrationSucceeded = false;
       try {
-        const cloudData = await loadCloudData(nextSession);
+        const longTermStore = getLongTermStore(nextSession.user.id);
+        const [cloudData] = await Promise.all([
+          loadCloudData(nextSession),
+          longTermStore.refresh(),
+        ]);
         const effectiveData = cloudData ?? createInitialCloudData(nextSession);
-
-        if (!cloudData) {
-          await saveInitialCloudData(nextSession, effectiveData);
-        }
 
         applyCloudData(effectiveData);
         let nextAvatarUrl: string | null = null;
@@ -104,11 +114,12 @@ function App() {
           }
         }
         if (mounted && requestVersion === hydrationVersion) {
-          setPlans(loadPlans());
+          setPlans(ensureWeekPlan(effectiveData.plans, initialWeekStart));
+          setMoodRecords(effectiveData.moods);
+          setTravelRoutes(effectiveData.travelRoutes);
           setProfileName(effectiveData.profileName || "林溪");
           setAvatarUrl(nextAvatarUrl);
           setTheme(effectiveData.theme);
-          setDataRevision((value) => value + 1);
         }
         hydratedUserId = nextSession.user.id;
         hydrationSucceeded = true;
@@ -134,7 +145,19 @@ function App() {
     };
   }, []);
 
-  useEffect(() => startAnalytics(), []);
+  useEffect(() => {
+    clearLegacyBusinessCache();
+    startAnalytics();
+  }, []);
+
+  useEffect(() => {
+    const handleSaveError = (event: Event) => {
+      const detail = (event as CustomEvent<{ label?: string }>).detail;
+      setSaveError(`${detail?.label || "数据"}保存失败，当前内容仍保留在本页面，请检查网络后再次操作。`);
+    };
+    window.addEventListener("plan-record-save-error", handleSaveError);
+    return () => window.removeEventListener("plan-record-save-error", handleSaveError);
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -180,7 +203,6 @@ function App() {
   useEffect(() => {
     setPlans((currentPlans) => {
       const nextPlans = ensureWeekPlan(currentPlans, activeWeekStart);
-      if (nextPlans !== currentPlans) savePlans(nextPlans);
       return nextPlans;
     });
   }, [activeWeekStart]);
@@ -203,7 +225,6 @@ function App() {
         ...currentPlans,
         [activeWeekStart]: updatedWeek,
       };
-      savePlans(nextPlans);
       return nextPlans;
     });
   };
@@ -212,7 +233,6 @@ function App() {
     const nextPlans = ensureWeekPlan(plans, weekStartDate);
     if (nextPlans !== plans) {
       setPlans(nextPlans);
-      savePlans(nextPlans);
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(weekStartDate);
@@ -223,7 +243,6 @@ function App() {
     const nextPlans = ensureWeekPlan(plans, weekStartDate);
     if (nextPlans !== plans) {
       setPlans(nextPlans);
-      savePlans(nextPlans);
     }
     setActiveWeekStart(weekStartDate);
     setSelectedDate(date);
@@ -254,14 +273,13 @@ function App() {
     const weekStart = toDateKey(startOfWeek(parseDateKey(today)));
     const task = createTask(title, category, today);
     const currentWeek = ensureWeekPlan(plans, weekStart)[weekStart];
-    await savePlanTaskConfirmed(session, task, currentWeek.days.find(day => day.date === today)?.tasks.length ?? 0);
     setPlans(current => {
       const next = ensureWeekPlan(current, weekStart);
       const week = next[weekStart];
       const updated = { ...next, [weekStart]: { ...week, days: week.days.map(day => day.date === today ? { ...day, tasks: [...day.tasks, task] } : day) } };
-      savePlans(updated);
       return updated;
     });
+    void savePlanTask(task, currentWeek.days.find(day => day.date === today)?.tasks.length ?? 0);
   };
 
   const toggleTask = (taskId: string) => {
@@ -316,6 +334,34 @@ function App() {
     void removePlanTask(taskId);
   };
 
+  const updateMoodRecord = (date: string, record: MoodRecord) => {
+    setMoodRecords((current) => ({ ...current, [date]: record }));
+    void saveMoodRecord(date, record);
+  };
+
+  const deleteMoodRecord = (date: string) => {
+    setMoodRecords((current) => {
+      const next = { ...current };
+      delete next[date];
+      return next;
+    });
+    void removeMoodRecord(date);
+  };
+
+  const updateTravelRoute = (route: TravelRoute, sortOrder: number) => {
+    setTravelRoutes((current) => {
+      const index = current.findIndex((item) => item.id === route.id);
+      if (index < 0) return [...current, route];
+      return current.map((item) => item.id === route.id ? route : item);
+    });
+    void saveTravelRoute(route, sortOrder);
+  };
+
+  const deleteTravelRoute = (routeId: string) => {
+    setTravelRoutes((current) => current.filter((item) => item.id !== routeId));
+    void removeTravelRoute(routeId);
+  };
+
   const handleSignOut = async () => {
     if (!supabase || !session) return;
     try {
@@ -332,10 +378,11 @@ function App() {
     }
     clearLocalUserData();
     setSession(null);
-    setPlans(loadPlans());
+    setPlans({ [initialWeekStart]: createWeekPlan(initialWeekStart) });
+    setMoodRecords({});
+    setTravelRoutes([]);
     setProfileName("林溪");
     setAvatarUrl(null);
-    setDataRevision((value) => value + 1);
     navigateTo("home");
   };
 
@@ -351,7 +398,9 @@ function App() {
     <div className="workbench-shell min-h-screen text-slate-950 transition-colors dark:text-white">
       {activeView === "travel" ? (
         <TravelDashboard
-          key={`travel-${dataRevision}`}
+          routes={travelRoutes}
+          onSaveRoute={updateTravelRoute}
+          onDeleteRoute={deleteTravelRoute}
           sidebarOpen={isSidebarOpen}
           onSidebarToggle={() => setIsSidebarOpen((value) => !value)}
           onBack={(view) => navigateTo(view ?? "home")}
@@ -382,8 +431,9 @@ function App() {
         <main className="min-w-0 flex-1">
           {activeView === "home" ? (
             <HomeDashboard
-              key={`home-${dataRevision}`}
               week={activeWeek}
+              moodRecords={moodRecords}
+              travelRoutes={travelRoutes}
               profileName={session ? profileName : "朋友"}
               onNavigate={navigateTo}
             />
@@ -399,7 +449,9 @@ function App() {
             />
           ) : activeView === "mood" ? (
             <MoodDashboard
-              key={`mood-${dataRevision}`}
+              records={moodRecords}
+              onSaveRecord={updateMoodRecord}
+              onDeleteRecord={deleteMoodRecord}
               menuOpen={isSidebarOpen}
               onMenuToggle={() => setIsSidebarOpen((value) => !value)}
               onBack={() => navigateTo("home")}
@@ -488,6 +540,12 @@ function App() {
           setShowAuthModal(false);
         }}
       />
+      {saveError && (
+        <div role="alert" className="fixed bottom-6 left-1/2 z-[200] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm text-red-600 shadow-xl dark:border-red-900 dark:bg-slate-900">
+          <span>{saveError}</span>
+          <button type="button" aria-label="关闭保存失败提示" onClick={() => setSaveError("")} className="shrink-0 text-lg leading-none">×</button>
+        </div>
+      )}
     </div>
     </NavigationContext.Provider>
   );

@@ -3,8 +3,9 @@ export function createOptimisticSaveQueue<T, Snapshot = T>(initial: T, options: 
   save: (confirmed: T, next: Snapshot) => Promise<T>;
   display: (value: T | Snapshot) => void;
   confirmed: (value: T) => void;
-  failed: (error: unknown) => void;
+  failed: (error: unknown, draft: T | Snapshot) => void;
   pending: (value: boolean) => void;
+  rollbackOnError?: boolean;
 }) {
   let confirmed = initial;
   let visible: T | Snapshot = initial;
@@ -29,9 +30,12 @@ export function createOptimisticSaveQueue<T, Snapshot = T>(initial: T, options: 
         if (!active) break;
         // Later snapshots depend on the failed change, so discard them together.
         const rejected = queue.splice(0);
-        visible = confirmed;
-        options.display(confirmed);
-        options.failed(error);
+        const draft = visible;
+        if (options.rollbackOnError !== false) {
+          visible = confirmed;
+          options.display(confirmed);
+        }
+        options.failed(error, draft);
         rejected.forEach(entry => entry.resolve(false));
       }
     }

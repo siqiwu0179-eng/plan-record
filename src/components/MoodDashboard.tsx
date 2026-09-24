@@ -24,11 +24,8 @@ import { toDateKey } from "../utils/date";
 import {
   getMonthMoodRecords,
   MOODS,
-  MOOD_RECORDS_STORAGE_KEY,
-  readMoodRecords,
   type MoodRecord,
 } from "../utils/mood";
-import { removeMoodRecord, saveMoodRecord } from "../utils/cloud";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 
 const parseDate = (value: string) => new Date(`${value}T12:00:00`);
@@ -44,17 +41,22 @@ const getWeekday = (value: string) =>
     .replace("星期", "周");
 
 export function MoodDashboard({
+  records,
+  onSaveRecord,
+  onDeleteRecord,
   menuOpen,
   onMenuToggle,
   onBack,
 }: {
+  records: Record<string, MoodRecord>;
+  onSaveRecord: (date: string, record: MoodRecord) => void;
+  onDeleteRecord: (date: string) => void;
   menuOpen: boolean;
   onMenuToggle: () => void;
   onBack: () => void;
 }) {
   const todayKey = toDateKey(new Date());
   const [selectedDate, setSelectedDate] = useState(todayKey);
-  const [records, setRecords] = useState<Record<string, MoodRecord>>(readMoodRecords);
   const [selectedMood, setSelectedMood] = useState(records[todayKey]?.mood ?? 3);
   const [entry, setEntry] = useState(records[todayKey]?.entry ?? "");
   const [availableTags, setAvailableTags] = useState(["充实", "放松", "有一点疲惫"]);
@@ -63,7 +65,6 @@ export function MoodDashboard({
   );
   const [addingTag, setAddingTag] = useState(false);
   const [newTag, setNewTag] = useState("");
-  const [saved, setSaved] = useState(false);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -71,12 +72,7 @@ export function MoodDashboard({
     setSelectedMood(record?.mood ?? 3);
     setEntry(record?.entry ?? "");
     setSelectedTags(record?.tags ?? []);
-    setSaved(false);
-  }, [selectedDate]);
-
-  useEffect(() => {
-    window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(records));
-  }, [records]);
+  }, [records, selectedDate]);
 
   const selected = parseDate(selectedDate);
   const monthRecords = getMonthMoodRecords(records, selectedDate);
@@ -136,13 +132,11 @@ export function MoodDashboard({
     setSelectedTags((current) =>
       current.includes(tag) ? current.filter((item) => item !== tag) : [...current, tag],
     );
-    setSaved(false);
   };
 
   const removeTag = (tag: string) => {
     setAvailableTags((current) => current.filter((item) => item !== tag));
     setSelectedTags((current) => current.filter((item) => item !== tag));
-    setSaved(false);
   };
 
   const addTag = () => {
@@ -152,24 +146,10 @@ export function MoodDashboard({
     setSelectedTags((current) => (current.includes(tag) ? current : [...current, tag]));
     setNewTag("");
     setAddingTag(false);
-    setSaved(false);
   };
 
   const saveRecord = () => {
-    setRecords((current) => {
-      const next = {
-        ...current,
-        [selectedDate]: {
-          mood: selectedMood,
-          entry,
-          tags: selectedTags,
-        },
-      };
-      window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
-      void saveMoodRecord(selectedDate, next[selectedDate]);
-      return next;
-    });
-    setSaved(true);
+    onSaveRecord(selectedDate, { mood: selectedMood, entry, tags: selectedTags });
   };
 
   const deleteRecord = () => {
@@ -177,17 +157,10 @@ export function MoodDashboard({
     const recordLabel = selectedDate === todayKey ? "今天的心情记录" : `${formatRecordDate(selectedDate)}的心情记录`;
     if (!window.confirm(`确定删除${recordLabel}吗？删除后无法恢复。`)) return;
 
-    setRecords((current) => {
-      const next = { ...current };
-      delete next[selectedDate];
-      window.localStorage.setItem(MOOD_RECORDS_STORAGE_KEY, JSON.stringify(next));
-      void removeMoodRecord(selectedDate);
-      return next;
-    });
+    onDeleteRecord(selectedDate);
     setSelectedMood(3);
     setEntry("");
     setSelectedTags([]);
-    setSaved(false);
   };
 
   const openDatePicker = () => {
@@ -297,7 +270,6 @@ export function MoodDashboard({
                 key={label}
                 onClick={() => {
                   setSelectedMood(index + 1);
-                  setSaved(false);
                 }}
               >
                 <span
@@ -382,7 +354,6 @@ export function MoodDashboard({
             value={entry}
             onChange={(event) => {
               setEntry(event.target.value);
-              setSaved(false);
             }}
             className="mt-4 h-48 w-full resize-none rounded-2xl border border-white/80 bg-white/52 p-4 text-sm leading-7 outline-none backdrop-blur"
           />
@@ -407,7 +378,7 @@ export function MoodDashboard({
               onClick={saveRecord}
               className="min-w-52 rounded-xl bg-blue-500 px-8 py-3 font-semibold text-white"
             >
-              {saved ? "已保存" : selectedDate === todayKey ? "保存今天" : "保存记录"}
+              {selectedDate === todayKey ? "保存今天" : "保存记录"}
             </button>
             <button
               type="button"

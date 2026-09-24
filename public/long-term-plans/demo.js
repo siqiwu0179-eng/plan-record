@@ -35,7 +35,6 @@ let cloudSaving = false;
 function loadProjects() { return []; }
 
 function saveProjects() {
-  cloudSaving = true;
   updateFolder();
   if (window.parent !== window) {
     window.parent.postMessage({ source: BRIDGE_SOURCE, type: "projects-changed", projects }, window.location.origin);
@@ -240,7 +239,6 @@ function bindStackEvents() {
         deleteArmedId = null;
         saveProjects();
         renderStack();
-        showToast("Plan deleted");
       });
     }
 
@@ -288,7 +286,6 @@ function bindTitleEdit(project, card) {
     project.editingTitle = false;
     saveProjects();
     renderStack();
-    showToast("Plan updated");
   };
   card.querySelector(".save-title").addEventListener("click", save);
   card.querySelector(".cancel-title").addEventListener("click", () => { project.editingTitle = false; renderStack(); });
@@ -321,7 +318,6 @@ function bindProjectDrag(card) {
     projects.splice(to, 0, moved);
     saveProjects();
     renderStack();
-    showToast("Plans reordered");
   });
 }
 
@@ -340,7 +336,6 @@ function bindTaskEvents(project, row) {
       editingTaskId = null;
       saveProjects();
       renderStack();
-      showToast("Step updated");
     };
     row.querySelector(".save-task").addEventListener("click", save);
     row.querySelector(".cancel-task").addEventListener("click", () => { editingTaskId = null; renderStack(); });
@@ -383,7 +378,6 @@ function bindTaskEvents(project, row) {
     project.tasks.splice(to, 0, moved);
     saveProjects();
     renderStack();
-    showToast("Steps reordered");
   });
 }
 
@@ -451,7 +445,10 @@ document.querySelector("#open-folder").addEventListener("click", (event) => {
   isAnimating = true;
   folderOpen = true;
   stage.classList.remove("closing");
-  window.requestAnimationFrame(() => {
+  let started = false;
+  const startOpenAnimation = () => {
+    if (started) return;
+    started = true;
     stage.classList.add("open");
     stack.querySelectorAll(".plan-card").forEach((card) => { card.tabIndex = 0; });
     const duration = STACK_CARD_DURATION + Math.max(0, projects.length - 1) * STACK_CARD_STAGGER;
@@ -459,7 +456,9 @@ document.querySelector("#open-folder").addEventListener("click", (event) => {
       isAnimating = false;
       stack.querySelector(".plan-card:first-child")?.focus();
     }, duration);
-  });
+  };
+  window.requestAnimationFrame(startOpenAnimation);
+  window.setTimeout(startOpenAnimation, 50);
 });
 document.querySelector("#open-folder").addEventListener("keydown", (event) => {
   if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return;
@@ -476,7 +475,6 @@ newProjectForm.addEventListener("submit", (event) => {
   closeNewProjectPanel();
   saveProjects();
   renderStack();
-  showToast("New plan inserted");
 });
 
 document.addEventListener("keydown", (event) => {
@@ -506,7 +504,7 @@ if (window.parent !== window) {
   window.parent.postMessage({ source: BRIDGE_SOURCE, type: "ready", projects }, window.location.origin);
 }
 
-// Prevent edits before authenticated hydration and overlapping cloud writes.
+// Prevent edits only until authenticated cloud data has hydrated.
 for (const name of ["click", "submit", "keydown", "drop"]) document.addEventListener(name, event => {
   if (!cloudReady || cloudSaving) { event.preventDefault(); event.stopImmediatePropagation(); }
 }, true);

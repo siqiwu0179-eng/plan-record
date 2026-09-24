@@ -1,12 +1,11 @@
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronRight, FileText, GraduationCap, Leaf, Lightbulb, Link, ListTodo, Pencil, Plus, Trash2, X } from "lucide-react";
 import { DashboardPageHeader } from "./DashboardPageHeader";
 import { CATEGORIES, CATEGORY_META } from "../constants";
 import type { Category, LongTermPlan } from "../types";
 import { blankDetails, rateOf, safeUrl, statusOf, type PlanState, type PlanDetails, type Compass } from "../utils/longTermLocal";
-import { emptyWorkspace, loadLongTermWorkspace, saveLongTermWorkspace, saveLongTermCompass, saveErrorText, type Workspace } from "../utils/longTermCloud";
-import { createOptimisticSaveQueue, trackPendingSave, waitForPendingSaves } from "../utils/optimisticSaveQueue";
+import { getLongTermStore } from "../utils/longTermStore";
 import "./LongTermReference.css";
 
 const tabs = [{ key: "notes", label: "笔记", icon: FileText }, { key: "resources", label: "相关资料", icon: Link }, { key: "ideas", label: "灵感想法", icon: Lightbulb }] as const;
@@ -21,20 +20,16 @@ const kindNames = { plan: "长期计划", step: "步骤", notes: "笔记", resou
 
 export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, onBack, onAddDaily }: {
   userId: string | null; cloudReady: boolean; menuOpen: boolean; onMenuToggle: () => void; onBack: () => void;
-  onAddDaily: (title: string, category: Category) => Promise<void>;
+  onAddDaily: (title: string, category: Category) => void;
 }) {
-  const workspace = useRef(emptyWorkspace());
-  const busy = useRef(false);
-  const planQueue = useRef<ReturnType<typeof createOptimisticSaveQueue<Workspace, PlanState>> | null>(null);
-  const planPending = useRef(false);
-  const [planSaving, setPlanSaving] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [data, setData] = useState<PlanState>(emptyWorkspace());
+  const store = getLongTermStore(userId ?? "guest");
+  const cloud = useSyncExternalStore(store.subscribe, store.getSnapshot);
+  const data = cloud.workspace;
+  const compass = cloud.workspace.compass;
+  const ready = Boolean(userId && cloudReady && cloud.ready);
   const [selectedId, setSelectedId] = useState("");
   const [filter, setFilter] = useState("全部");
   const [tab, setTab] = useState<Tab>("notes");
-  const [compass, setCompass] = useState<Compass>(emptyWorkspace().compass);
   const [compassEdit, setCompassEdit] = useState<{ key: CompassKey; content: string } | null>(null);
   const [entryEdit, setEntryEdit] = useState<{ id: string | null; title: string; content: string } | null>(null);
   const entryTextarea = useRef<HTMLTextAreaElement>(null);
@@ -59,8 +54,8 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
   }, [entryEdit?.id, entryEdit?.content, tab]);
   const [menu, setMenu] = useState<string | null>(null);
   const [modal, setModal] = useState<Modal | null>(null);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [localError, setError] = useState("");
+  const error = localError || (!cloud.ready ? cloud.error : "");
   const [category, setCategory] = useState<Category>("study");
   const [creating, setCreating] = useState(false);
   const [newColor, setNewColor] = useState(planColors[0]);
@@ -103,88 +98,51 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     return () => { window.removeEventListener("scroll", closeOnScroll, true); window.removeEventListener("resize", closeOnScroll); };
   }, [menu]);
   useEffect(() => {
-    let cancelled = false;
-    setReady(false);
-    planQueue.current?.detach();
-    planQueue.current = null;
-    setPlanSaving(false);
-    planPending.current = false;
-    workspace.current = emptyWorkspace();
-    setData(emptyWorkspace());
-    setCompass(emptyWorkspace().compass);
-    if (userId && cloudReady) void waitForPendingSaves(userId).then(() => {
-      if (cancelled) return null;
-      return loadLongTermWorkspace(userId);
-    }).then(next => {
-      if (cancelled || !next) return;
-      planQueue.current = createOptimisticSaveQueue<Workspace, PlanState>(next, {
-        save: (confirmed, value) => saveLongTermWorkspace(confirmed, value, userId),
-        display: value => { if (!cancelled) setData(value); },
-        confirmed: saved => {
-          if (!cancelled) workspace.current = { ...workspace.current, ...saved, compass: workspace.current.compass, compassVersion: workspace.current.compassVersion };
-          window.dispatchEvent(new Event("longterm-cloud-updated"));
-        },
-        failed: error => { if (!cancelled) setError(`${saveErrorText(error)} 未保存的操作已撤回。`); },
-        pending: value => { if (!cancelled) { planPending.current = value; setPlanSaving(value); } },
-      });
-      workspace.current = next; setData(next); setCompass(next.compass); setReady(true); setError("");
-    }).catch(error => { if (!cancelled) setError(`云端读取失败，请刷新重试。${String(error.message ?? error)}`); });
-    return () => { cancelled = true; planQueue.current?.detach(); planQueue.current = null; };
-  }, [userId, cloudReady]);
+    if (userId && cloudReady) void store.refresh();
+  }, [store, userId, cloudReady]);
   useEffect(() => {
     const close = (event: PointerEvent) => { if (!(event.target as Element).closest(".ltr-menu-wrap")) setMenu(null); };
     const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setMenu(null); };
     document.addEventListener("pointerdown", close); document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", escape); };
   }, []);
-  const commit = async (next: PlanState) => {
-    if (!ready || busy.current) return false;
-    if (planPending.current) { setError("步骤正在保存，请稍后再编辑其他内容。"); return false; }
-    busy.current = true; setSaving(true);
-    try {
-      const saved = await saveLongTermWorkspace(workspace.current, next);
-      workspace.current = saved; planQueue.current?.reset(saved); setData(saved); setError("");
-      window.dispatchEvent(new Event("longterm-cloud-updated")); return true;
-    } catch (error) { setError(saveErrorText(error)); return false; }
-    finally { busy.current = false; setSaving(false); }
+  const commit = (next: PlanState) => {
+    if (!ready) return false;
+    setError("");
+    return store.updatePlans(next);
   };
   const toggleStep = (planId: string, stepId: string) => {
-    if (!ready || busy.current || !planQueue.current || !userId) return;
-    const current = planQueue.current.current();
-    const next = { ...current, plans: current.plans.map(plan => plan.id === planId
+    const current = store.getSnapshot().workspace;
+    commit({ ...current, plans: current.plans.map(plan => plan.id === planId
       ? { ...plan, tasks: plan.tasks.map(step => step.id === stepId ? { ...step, done: !step.done } : step) }
-      : plan) };
-    setError("");
-    void trackPendingSave(userId, planQueue.current.enqueue(next));
+      : plan) });
   };
-  const commitCompass = async (next: Compass) => {
-    if (planPending.current) { setError("步骤正在保存，请稍后再保存人生方向。"); return false; }
-    if (!ready || busy.current) return false;
-    busy.current = true; setSaving(true);
-    try {
-      const saved = await saveLongTermCompass(workspace.current, next);
-      workspace.current = saved; setCompass(saved.compass); setError(""); return true;
-    } catch (error) { setError(saveErrorText(error)); return false; }
-    finally { busy.current = false; setSaving(false); }
+  const commitCompass = (next: Compass) => {
+    if (!ready) return false;
+    setError("");
+    return store.updateCompass(next);
   };
   const updatePlan = (change: (plan: LongTermPlan) => LongTermPlan) => {
-    const current = planQueue.current?.current() ?? data;
+    const current = store.getSnapshot().workspace;
     return selected && commit({ ...current, plans: current.plans.map(plan => plan.id === selected.id ? change(plan) : plan) });
   };
-  const updateDetails = (patch: Partial<PlanDetails>) => selected && commit({ ...data, details: { ...data.details, [selected.id]: { ...meta, ...patch } } });
+  const updateDetails = (patch: Partial<PlanDetails>) => {
+    const current = store.getSnapshot().workspace;
+    return selected && commit({ ...current, details: { ...current.details, [selected.id]: { ...blankDetails(), ...current.details[selected.id], ...patch } } });
+  };
   const open = (value: Modal) => { setMenu(null); setError(""); setModal(value); };
-  const saveCompass = async () => {
+  const saveCompass = () => {
     if (!compassEdit) return;
     const next = { ...compass, [compassEdit.key]: compassEdit.content };
-    if (await commitCompass(next)) setCompassEdit(null);
+    if (commitCompass(next)) setCompassEdit(null);
   };
-  const saveEntry = async () => {
+  const saveEntry = () => {
     if (!entryEdit) return;
     if (!entryEdit.title.trim()) { setError("名称不能为空。"); return; }
     const content = tab === "resources" ? safeUrl(entryEdit.content) : entryEdit.content;
     if (content === null) { setError("资料链接必须是有效的 http 或 https 地址。"); return; }
     const entry = { id: entryEdit.id ?? crypto.randomUUID(), title: entryEdit.title.trim(), content };
-    if (await updateDetails({ [tab]: entryEdit.id ? meta[tab].map(item => item.id === entryEdit.id ? entry : item) : [...meta[tab], entry] })) setEntryEdit(null);
+    if (updateDetails({ [tab]: entryEdit.id ? meta[tab].map(item => item.id === entryEdit.id ? entry : item) : [...meta[tab], entry] })) setEntryEdit(null);
   };
   const moveEntry = (id: string, target: string) => {
     const entries = [...meta[tab]];
@@ -198,10 +156,10 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     {tab === "resources" ? <input aria-label="资料链接" placeholder="https://…" value={entryEdit?.content ?? ""} onChange={event => setEntryEdit(current => current && { ...current, content: event.target.value })} /> : <textarea ref={entryTextarea} aria-label="手记内容" placeholder="直接在这里记录…" rows={3} value={entryEdit?.content ?? ""} onChange={event => setEntryEdit(current => current && { ...current, content: event.target.value })} />}
     <div className="ltr-inline-actions"><button type="submit" className="ltr-icon-action" aria-label="保存手记" title="保存"><Check size={17} /></button><button type="button" className="ltr-icon-action" aria-label="取消编辑手记" title="取消" onClick={() => { setEntryEdit(null); setError(""); }}><X size={17} /></button></div>
   </form>;
-  const saveStep = async () => {
+  const saveStep = () => {
     if (!stepEdit) return;
     if (!stepEdit.title.trim()) { setError("步骤内容不能为空。"); return; }
-    if (await updatePlan(plan => ({ ...plan, tasks: stepEdit.id ? plan.tasks.map(step => step.id === stepEdit.id ? { ...step, title: stepEdit.title.trim() } : step) : [...plan.tasks, { id: crypto.randomUUID(), title: stepEdit.title.trim(), done: false }] }))) setStepEdit(null);
+    if (updatePlan(plan => ({ ...plan, tasks: stepEdit.id ? plan.tasks.map(step => step.id === stepEdit.id ? { ...step, title: stepEdit.title.trim() } : step) : [...plan.tasks, { id: crypto.randomUUID(), title: stepEdit.title.trim(), done: false }] }))) setStepEdit(null);
   };
   const stepEditor = () => <form className="ltr-step-editor" onSubmit={event => { event.preventDefault(); saveStep(); }}>
     <input autoFocus aria-label="步骤内容" placeholder="输入步骤内容" value={stepEdit?.title ?? ""} onChange={event => setStepEdit(current => current && { ...current, title: event.target.value })} onKeyDown={event => { if (event.key === "Escape") { setStepEdit(null); setError(""); } }} />
@@ -215,16 +173,16 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     const [step] = tasks.splice(from, 1); tasks.splice(to, 0, step);
     return { ...plan, tasks };
   });
-  const createPlan = async () => {
+  const createPlan = () => {
     if (!newName.trim()) { setError("名称不能为空。"); return; }
     const id = crypto.randomUUID();
-    if (await commit({ plans: [{ id, name: newName.trim(), color: newColor, tasks: [] }, ...data.plans], details: { ...data.details, [id]: blankDetails() } })) {
+    if (commit({ plans: [{ id, name: newName.trim(), color: newColor, tasks: [] }, ...data.plans], details: { ...data.details, [id]: blankDetails() } })) {
       setSelectedId(id); setFilter("全部"); setCreating(false); setNewName("");
     }
   };
-  const saveInline = async () => {
+  const saveInline = () => {
     if (editing === "name" && !draft.trim()) { setError("名称不能为空。"); return; }
-    const saved = editing === "name" ? await updatePlan(plan => ({ ...plan, name: draft.trim() })) : await updateDetails({ goal: draft.trim() });
+    const saved = editing === "name" ? updatePlan(plan => ({ ...plan, name: draft.trim() })) : updateDetails({ goal: draft.trim() });
     if (saved) setEditing(null);
   };
   const headingField = (field: "name" | "goal", value: string) => (
@@ -239,44 +197,40 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
       </>}
     </div>
   );
-  const addDaily = async (title: string, category: Category) => {
-    if (busy.current || !ready) return false;
-    busy.current = true; setSaving(true);
-    try {
-      await onAddDaily(title, category);
-      setNotice(`已加入今天的「${CATEGORY_META[category].label}」分组`);
-      setError(""); return true;
-    } catch { setError("加入每日计划失败，未确认云端保存，请重试。"); return false; }
-    finally { busy.current = false; setSaving(false); }
+  const addDaily = (title: string, category: Category) => {
+    if (!ready) return false;
+    onAddDaily(title, category);
+    setError("");
+    return true;
   };
   const submit = async () => {
     if (!modal) return;
     let saved = false;
     if (modal.kind === "compass" && modal.compassKey) {
       const next = { ...compass, [modal.compassKey]: modal.content };
-      if (await commitCompass(next)) setModal(null);
+      if (commitCompass(next)) setModal(null);
       return;
     }
     if (modal.kind === "delete" && selected) {
       if (modal.target === "plan") {
         const details = { ...data.details }; delete details[selected.id];
-        saved = await commit({ plans: data.plans.filter(plan => plan.id !== selected.id), details });
-      } else if (modal.target === "steps") saved = Boolean(await updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(step => step.id !== modal.id) })));
-      else if (modal.target) saved = Boolean(await updateDetails({ [modal.target]: meta[modal.target].filter(entry => entry.id !== modal.id) }));
+        saved = commit({ plans: data.plans.filter(plan => plan.id !== selected.id), details });
+      } else if (modal.target === "steps") saved = Boolean(updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(step => step.id !== modal.id) })));
+      else if (modal.target) saved = Boolean(updateDetails({ [modal.target]: meta[modal.target].filter(entry => entry.id !== modal.id) }));
     } else if (modal.kind === "daily") {
-      saved = await addDaily(modal.title, category);
+      saved = addDaily(modal.title, category);
     } else if (!modal.title.trim()) { setError("名称不能为空。"); return;
     } else if (modal.kind === "plan") {
       const id = modal.id ?? crypto.randomUUID();
-      saved = await commit({ plans: modal.id ? data.plans.map(plan => plan.id === id ? { ...plan, name: modal.title.trim() } : plan) : [...data.plans, { id, name: modal.title.trim(), color: "#C7DCCF", tasks: [] }], details: { ...data.details, [id]: { ...blankDetails(), ...data.details[id], goal: modal.content.trim() } } });
+      saved = commit({ plans: modal.id ? data.plans.map(plan => plan.id === id ? { ...plan, name: modal.title.trim() } : plan) : [...data.plans, { id, name: modal.title.trim(), color: "#C7DCCF", tasks: [] }], details: { ...data.details, [id]: { ...blankDetails(), ...data.details[id], goal: modal.content.trim() } } });
       if (saved) { setSelectedId(id); setFilter("全部"); }
     } else if (modal.kind === "step") {
-      saved = Boolean(await updatePlan(plan => ({ ...plan, tasks: modal.id ? plan.tasks.map(step => step.id === modal.id ? { ...step, title: modal.title.trim() } : step) : [...plan.tasks, { id: crypto.randomUUID(), title: modal.title.trim(), done: false }] })));
+      saved = Boolean(updatePlan(plan => ({ ...plan, tasks: modal.id ? plan.tasks.map(step => step.id === modal.id ? { ...step, title: modal.title.trim() } : step) : [...plan.tasks, { id: crypto.randomUUID(), title: modal.title.trim(), done: false }] })));
     } else if (modal.kind === "notes" || modal.kind === "resources" || modal.kind === "ideas") {
       const content = modal.kind === "resources" ? safeUrl(modal.content) : modal.content;
       if (content === null) { setError("资料链接必须是有效的 http 或 https 地址。"); return; }
       const entry = { id: modal.id ?? crypto.randomUUID(), title: modal.title.trim(), content };
-      saved = Boolean(await updateDetails({ [modal.kind]: modal.id ? meta[modal.kind].map(item => item.id === modal.id ? entry : item) : [...meta[modal.kind], entry] }));
+      saved = Boolean(updateDetails({ [modal.kind]: modal.id ? meta[modal.kind].map(item => item.id === modal.id ? entry : item) : [...meta[modal.kind], entry] }));
     }
     if (saved) setModal(null);
   };
@@ -285,9 +239,9 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
     <div className="inner-page-scroll-room px-3 pb-8 sm:px-4">
       <div className="mx-auto w-full max-w-[1400px]">
         <DashboardPageHeader title="长期计划" menuOpen={menuOpen} onMenuToggle={onMenuToggle} onBack={onBack} />
-        <div className="ltr-content mt-3.5" aria-busy={saving || planSaving || !ready}>
+        <div className="ltr-content mt-3.5" aria-busy={!ready}>
           {!ready && !error && <p role="status">正在读取云端长期计划…</p>}
-          <fieldset disabled={!ready || saving} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "contents" }}>
+          <fieldset disabled={!ready} style={{ border: 0, padding: 0, margin: 0, minWidth: 0, display: "contents" }}>
           {error && !modal && <p role="alert">{error}</p>}
           <div className="ltr-compass" aria-label="人生方向">
             {compassCards.map(({ key, title, hint, icon: CardIcon }) => <section key={key} className="glass-panel ltr-compass-card">
@@ -348,7 +302,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
                     </button><button type="button" role="checkbox" aria-checked={step.done} aria-label={`完成步骤：${step.title}`} className={`ltr-checkbox ${step.done ? "is-checked" : ""}`} onClick={() => toggleStep(selected.id, step.id)}>{step.done && <Check size={16} strokeWidth={3} />}</button>{stepEdit?.id === step.id ? stepEditor() : <span className={step.done ? "ltr-done" : ""}>{step.title}</span>}{stepEdit?.id !== step.id && <div className="ltr-step-actions">
                     <button type="button" className="ltr-icon-action" title="编辑步骤" aria-label={`编辑步骤：${step.title}`} onClick={() => { setStepEdit({ id: step.id, title: step.title }); setError(""); }}><Pencil size={17} /></button>
                     <button type="button" className="ltr-icon-action ltr-daily-trigger" title="加入每日计划" aria-label={`加入每日计划：${step.title}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setDailyPicker({ title: step.title, left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 310)) }); }}><Plus size={18} /></button>
-                    <button type="button" className="ltr-icon-action is-danger" title="删除步骤" aria-label={`删除步骤：${step.title}`} onClick={async () => { if (await updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(item => item.id !== step.id) })) && stepEdit?.id === step.id) setStepEdit(null); }}><Trash2 size={17} /></button>
+                    <button type="button" className="ltr-icon-action is-danger" title="删除步骤" aria-label={`删除步骤：${step.title}`} onClick={() => { if (updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(item => item.id !== step.id) })) && stepEdit?.id === step.id) setStepEdit(null); }}><Trash2 size={17} /></button>
                   </div>}</div>)}
                       {stepEdit?.id === null && <div className="ltr-step ltr-new-step">{stepEditor()}</div>}
                       {!selected.tasks.length && !stepEdit && <p className="ltr-empty">暂无步骤，点击「添加步骤」开始。</p>}
@@ -366,7 +320,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
                           onDragStart={event => { setEntryDrag(entry.id); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", entry.id); if (event.currentTarget.parentElement) event.dataTransfer.setDragImage(event.currentTarget.parentElement, 20, 20); }}
                           onDragEnd={() => { setEntryDrag(null); setEntryDrop(null); }}
                           onKeyDown={event => { if (event.key === "ArrowUp" || event.key === "ArrowDown") { event.preventDefault(); const index = meta[tab].findIndex(item => item.id === entry.id); const target = meta[tab][index + (event.key === "ArrowUp" ? -1 : 1)]; if (target) moveEntry(entry.id, target.id); } }}><span /><span /><span /><span /></button>
-                        {entryEdit?.id === entry.id ? entryEditor() : <><div className="ltr-entry-copy"><h3>{entry.title}</h3>{tab === "resources" ? <a href={safeUrl(entry.content) ?? undefined} target="_blank" rel="noreferrer">{entry.content}</a> : <p>{entry.content}</p>}</div><div className="ltr-entry-actions"><button type="button" className="ltr-icon-action" aria-label={`编辑手记：${entry.title}`} title="编辑" onClick={() => { setEntryEdit(entry); setError(""); }}><Pencil size={17} /></button><button type="button" className="ltr-icon-action is-danger" aria-label={`删除手记：${entry.title}`} title="删除" onClick={async () => { if (await updateDetails({ [tab]: meta[tab].filter(item => item.id !== entry.id) })) setEntryEdit(null); }}><Trash2 size={17} /></button></div></>}
+                        {entryEdit?.id === entry.id ? entryEditor() : <><div className="ltr-entry-copy"><h3>{entry.title}</h3>{tab === "resources" ? <a href={safeUrl(entry.content) ?? undefined} target="_blank" rel="noreferrer">{entry.content}</a> : <p>{entry.content}</p>}</div><div className="ltr-entry-actions"><button type="button" className="ltr-icon-action" aria-label={`编辑手记：${entry.title}`} title="编辑" onClick={() => { setEntryEdit(entry); setError(""); }}><Pencil size={17} /></button><button type="button" className="ltr-icon-action is-danger" aria-label={`删除手记：${entry.title}`} title="删除" onClick={() => { if (updateDetails({ [tab]: meta[tab].filter(item => item.id !== entry.id) })) setEntryEdit(null); }}><Trash2 size={17} /></button></div></>}
                       </div>)}
                       {entryEdit?.id === null && entryEditor()}
                       {!meta[tab].length && !entryEdit && <button type="button" className="ltr-paper-empty" onClick={() => { setEntryEdit({ id: null, title: "", content: "" }); setError(""); }}><Pencil size={24} /><span>{tab === "notes" ? "把沿途的思考写在这里" : tab === "resources" ? "让值得参考的资料有处可寻" : "每一个好想法，都值得留下"}</span><small>＋ {addLabel}</small></button>}
@@ -379,13 +333,12 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
               </> : <p className="ltr-empty">请选择或新建一个长期计划</p>}
             </section>
           </div>
-          {notice && <div className="ltr-toast" role="status">{notice}<button aria-label="关闭提示" onClick={() => setNotice("")}><X size={15} /></button></div>}
           </fieldset>
         </div>
       </div>
       {dailyPicker && createPortal(<div className="ltr-daily-picker" role="dialog" aria-label="加入今天的每日计划" style={{ left: dailyPicker.left, top: dailyPicker.top }}>
         <div className="ltr-picker-heading">加入今天 · 选择分组<button type="button" className="ltr-icon-action" aria-label="关闭分组选择" onClick={() => setDailyPicker(null)}><X size={15} /></button></div>
-        {CATEGORIES.map(key => <button type="button" className="ltr-group-option" key={key} disabled={saving} onClick={async () => { if (await addDaily(dailyPicker.title, key)) setDailyPicker(null); }}>{CATEGORY_META[key].label}</button>)}
+        {CATEGORIES.map(key => <button type="button" className="ltr-group-option" key={key} onClick={() => { if (addDaily(dailyPicker.title, key)) setDailyPicker(null); }}>{CATEGORY_META[key].label}</button>)}
       </div>, document.body)}
       <dialog ref={dialog} className="ltr-dialog" onCancel={event => { event.preventDefault(); setModal(null); }} onClick={event => { if (event.target === dialog.current) { const rect = dialog.current.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setModal(null); } }}>
         {modal && <form onSubmit={event => { event.preventDefault(); submit(); }}>
