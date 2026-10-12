@@ -33,7 +33,6 @@
 - `Supabase Auth`：负责账户注册、登录和会话
 - `public.profiles`：保存用户昵称和头像路径
 - `public.user_data`：保存计划、心情、旅行、主题和统计数据
-- `public.analytics_events`：保存网站使用统计事件
 - `Supabase Storage / avatars`：保存用户头像
 - Row Level Security（RLS）：每位登录用户只能访问自己的数据
 

@@ -40,7 +40,6 @@ import {
 } from "./utils/cloud";
 import type { MoodRecord } from "./utils/mood";
 import type { TravelRoute } from "./utils/travel";
-import { setAnalyticsUserId, startAnalytics, trackPageView } from "./utils/analytics";
 import type { WorkspaceView } from "./views";
 
 type StoredPlans = Record<string, WeekPlan>;
@@ -147,7 +146,6 @@ function App() {
 
   useEffect(() => {
     clearLegacyBusinessCache();
-    startAnalytics();
   }, []);
 
   useEffect(() => {
@@ -164,14 +162,6 @@ function App() {
       if (avatarUrl?.startsWith("blob:")) URL.revokeObjectURL(avatarUrl);
     };
   }, [avatarUrl]);
-
-  useEffect(() => {
-    setAnalyticsUserId(session?.user.id ?? null);
-  }, [session]);
-
-  useEffect(() => {
-    trackPageView(activeView, activeView === "home" ? "home" : "inner");
-  }, [activeView, session]);
 
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
