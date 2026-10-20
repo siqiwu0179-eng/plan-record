@@ -1,0 +1,55 @@
+.long-term-plans-overlay {
+  position: fixed;
+  z-index: 120;
+  width: 564px;
+  height: 665px;
+  overflow: visible;
+  pointer-events: none;
+  transition: filter 160ms ease;
+}
+
+.long-term-plans-overlay:focus-within {
+  filter: drop-shadow(0 12px 22px rgb(58 88 119 / 0.08));
+}
+
+.long-term-plans-overlay.is-hidden {
+  visibility: hidden;
+}
+
+.long-term-plans-overlay.is-page {
+  left: 50%;
+  top: 80px;
+  transform: translateX(-50%);
+  z-index: 20;
+}
+
+.long-term-plans-overlay.is-hidden .long-term-plans-frame {
+  pointer-events: none;
+}
+
+.long-term-plans-frame {
+  width: 640px;
+  height: 756px;
+  border: 0;
+  background: transparent;
+  transform: scale(0.88);
+  transform-origin: left top;
+  pointer-events: auto;
+}
+
+/* A transparent iframe still intercepts clicks across its full rectangle.
+   When the folder is closed, clip hit-testing to the visible folder itself. */
+.long-term-plans-frame.is-collapsed {
+  clip-path: inset(270px 188px 286px);
+}
+
+@media (max-width: 760px) {
+  .long-term-plans-overlay {
+    width: 448px;
+    height: 535px;
+  }
+
+  .long-term-plans-frame {
+    transform: scale(0.7);
+  }
+}

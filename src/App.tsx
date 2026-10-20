@@ -1,3 +1,4 @@
+import { trackAnalytics, type DailySource } from "./utils/analytics";
 import { useEffect, useMemo, useState } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { AuthScreen } from "./components/AuthScreen";
@@ -149,6 +150,12 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (!session || !cloudReady) return;
+    const timer = window.setTimeout(() => trackAnalytics(session.user.id, "page_viewed", activeView === "progress" ? "completion" : activeView), 0);
+    return () => window.clearTimeout(timer);
+  }, [session?.user.id, cloudReady, activeView]);
+
+  useEffect(() => {
     const handleSaveError = (event: Event) => {
       const detail = (event as CustomEvent<{ label?: string }>).detail;
       setSaveError(`${detail?.label || "数据"}保存失败，当前内容仍保留在本页面，请检查网络后再次操作。`);
@@ -257,7 +264,7 @@ function App() {
     void savePlanTask(task, selectedDay.tasks.length);
   };
 
-  const addLongTermStepToDaily = async (title: string, category: Category) => {
+  const addLongTermStepToDaily = async (title: string, category: Category, source?: DailySource) => {
     if (!session || !cloudReady) throw new Error("请等待账户数据加载完成后重试");
     const today = toDateKey(new Date());
     const weekStart = toDateKey(startOfWeek(parseDateKey(today)));
@@ -269,7 +276,7 @@ function App() {
       const updated = { ...next, [weekStart]: { ...week, days: week.days.map(day => day.date === today ? { ...day, tasks: [...day.tasks, task] } : day) } };
       return updated;
     });
-    void savePlanTask(task, currentWeek.days.find(day => day.date === today)?.tasks.length ?? 0);
+    void savePlanTask(task, currentWeek.days.find(day => day.date === today)?.tasks.length ?? 0, source);
   };
 
   const toggleTask = (taskId: string) => {

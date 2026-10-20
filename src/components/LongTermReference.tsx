@@ -1,3 +1,4 @@
+import type { DailySource } from "../utils/analytics";
 import { useEffect, useRef, useState, useSyncExternalStore, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { Check, ChevronRight, FileText, GraduationCap, Leaf, Lightbulb, Link, ListTodo, Pencil, Plus, Trash2, X } from "lucide-react";
@@ -20,7 +21,7 @@ const kindNames = { plan: "长期计划", step: "步骤", notes: "笔记", resou
 
 export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, onBack, onAddDaily }: {
   userId: string | null; cloudReady: boolean; menuOpen: boolean; onMenuToggle: () => void; onBack: () => void;
-  onAddDaily: (title: string, category: Category) => void;
+  onAddDaily: (title: string, category: Category, source?: DailySource) => void;
 }) {
   const store = getLongTermStore(userId ?? "guest");
   const cloud = useSyncExternalStore(store.subscribe, store.getSnapshot);
@@ -66,7 +67,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
   const [stepEdit, setStepEdit] = useState<{ id: string | null; title: string } | null>(null);
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropId, setDropId] = useState<string | null>(null);
-  const [dailyPicker, setDailyPicker] = useState<{ title: string; left: number; top: number } | null>(null);
+  const [dailyPicker, setDailyPicker] = useState<{ title: string; stepId: string; left: number; top: number } | null>(null);
   useEffect(() => {
     if (!dailyPicker) return;
     const close = (event: PointerEvent) => { if (!(event.target as Element).closest(".ltr-daily-picker, .ltr-daily-trigger")) setDailyPicker(null); };
@@ -197,9 +198,9 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
       </>}
     </div>
   );
-  const addDaily = (title: string, category: Category) => {
+  const addDaily = (title: string, category: Category, stepId?: string) => {
     if (!ready) return false;
-    onAddDaily(title, category);
+    onAddDaily(title, category, selected && stepId ? { goal_id: selected.id, step_id: stepId } : undefined);
     setError("");
     return true;
   };
@@ -218,7 +219,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
       } else if (modal.target === "steps") saved = Boolean(updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(step => step.id !== modal.id) })));
       else if (modal.target) saved = Boolean(updateDetails({ [modal.target]: meta[modal.target].filter(entry => entry.id !== modal.id) }));
     } else if (modal.kind === "daily") {
-      saved = addDaily(modal.title, category);
+      saved = addDaily(modal.title, category, modal.id);
     } else if (!modal.title.trim()) { setError("名称不能为空。"); return;
     } else if (modal.kind === "plan") {
       const id = modal.id ?? crypto.randomUUID();
@@ -301,7 +302,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
                       <span /><span /><span /><span />
                     </button><button type="button" role="checkbox" aria-checked={step.done} aria-label={`完成步骤：${step.title}`} className={`ltr-checkbox ${step.done ? "is-checked" : ""}`} onClick={() => toggleStep(selected.id, step.id)}>{step.done && <Check size={16} strokeWidth={3} />}</button>{stepEdit?.id === step.id ? stepEditor() : <span className={step.done ? "ltr-done" : ""}>{step.title}</span>}{stepEdit?.id !== step.id && <div className="ltr-step-actions">
                     <button type="button" className="ltr-icon-action" title="编辑步骤" aria-label={`编辑步骤：${step.title}`} onClick={() => { setStepEdit({ id: step.id, title: step.title }); setError(""); }}><Pencil size={17} /></button>
-                    <button type="button" className="ltr-icon-action ltr-daily-trigger" title="加入每日计划" aria-label={`加入每日计划：${step.title}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setDailyPicker({ title: step.title, left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 310)) }); }}><Plus size={18} /></button>
+                    <button type="button" className="ltr-icon-action ltr-daily-trigger" title="加入每日计划" aria-label={`加入每日计划：${step.title}`} onClick={event => { const rect = event.currentTarget.getBoundingClientRect(); setDailyPicker({ title: step.title, stepId: step.id, left: Math.max(8, Math.min(rect.right - 180, window.innerWidth - 188)), top: Math.max(8, Math.min(rect.bottom + 6, window.innerHeight - 310)) }); }}><Plus size={18} /></button>
                     <button type="button" className="ltr-icon-action is-danger" title="删除步骤" aria-label={`删除步骤：${step.title}`} onClick={() => { if (updatePlan(plan => ({ ...plan, tasks: plan.tasks.filter(item => item.id !== step.id) })) && stepEdit?.id === step.id) setStepEdit(null); }}><Trash2 size={17} /></button>
                   </div>}</div>)}
                       {stepEdit?.id === null && <div className="ltr-step ltr-new-step">{stepEditor()}</div>}
@@ -338,7 +339,7 @@ export function LongTermReference({ userId, cloudReady, menuOpen, onMenuToggle, 
       </div>
       {dailyPicker && createPortal(<div className="ltr-daily-picker" role="dialog" aria-label="加入今天的每日计划" style={{ left: dailyPicker.left, top: dailyPicker.top }}>
         <div className="ltr-picker-heading">加入今天 · 选择分组<button type="button" className="ltr-icon-action" aria-label="关闭分组选择" onClick={() => setDailyPicker(null)}><X size={15} /></button></div>
-        {CATEGORIES.map(key => <button type="button" className="ltr-group-option" key={key} onClick={() => { if (addDaily(dailyPicker.title, key)) setDailyPicker(null); }}>{CATEGORY_META[key].label}</button>)}
+        {CATEGORIES.map(key => <button type="button" className="ltr-group-option" key={key} onClick={() => { if (addDaily(dailyPicker.title, key, dailyPicker.stepId)) setDailyPicker(null); }}>{CATEGORY_META[key].label}</button>)}
       </div>, document.body)}
       <dialog ref={dialog} className="ltr-dialog" onCancel={event => { event.preventDefault(); setModal(null); }} onClick={event => { if (event.target === dialog.current) { const rect = dialog.current.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) setModal(null); } }}>
         {modal && <form onSubmit={event => { event.preventDefault(); submit(); }}>

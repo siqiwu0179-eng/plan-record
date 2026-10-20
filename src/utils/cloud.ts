@@ -1,3 +1,4 @@
+import { trackAnalytics, type DailySource } from "./analytics";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "../lib/supabase";
 import type { LongTermPlan, LongTermPlanStep, Task, WeekPlan } from "../types";
@@ -191,13 +192,14 @@ const rpc = async (name: string, args: Record<string, unknown>) => {
   if (error) throw error;
 };
 
-const scheduleRpcMutation = (label: string, rpcName: string, args: Record<string, unknown>) => {
+const scheduleRpcMutation = (label: string, rpcName: string, args: Record<string, unknown>, onSaved?: (userId: string) => void) => {
   if (!activeUserId) return Promise.resolve();
   const userId = activeUserId;
   return enqueueMutation(label, async () => {
     const session = await getCurrentSession();
     if (!session || session.user.id !== userId) throw new Error("登录状态已变化");
     await rpc(rpcName, args);
+    try { onSaved?.(userId); } catch { /* Analytics cannot fail a save. */ }
   });
 };
 
@@ -234,8 +236,10 @@ const planTaskArgs = (task: Task, sortOrder: number) => ({
   p_updated_at: task.updatedAt,
 });
 
-export const savePlanTask = (task: Task, sortOrder: number) =>
-  scheduleRpcMutation("每日计划", "save_plan_task", planTaskArgs(task, sortOrder));
+export const savePlanTask = (task: Task, sortOrder: number, source?: DailySource) =>
+  scheduleRpcMutation("每日计划", "save_plan_task", planTaskArgs(task, sortOrder), source
+    ? userId => trackAnalytics(userId, "longterm_step_added_to_daily", "longterm", task.id, source)
+    : undefined);
 
 export const removePlanTask = (taskId: string, updatedAt = new Date().toISOString()) =>
   scheduleRpcMutation("每日计划", "delete_plan_task", { p_id: taskId, p_updated_at: updatedAt });

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#eeeeec" />
+    <title>Long-term Plans · Stacked Cards Demo</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="plan-desk">
+      <section class="folder-entry-view" id="folder-entry-view">
+        <div class="uiverse-folder" id="open-folder" role="button" tabindex="0" aria-label="Open Long-term Plans folder">
+          <div class="uiverse-file">
+            <span class="u-work-5"></span>
+            <div class="card-stack" id="card-stack" aria-live="polite"></div>
+            <div class="u-work-1">
+              <span class="folder-title">Long-term Plans</span>
+            </div>
+          </div>
+        </div>
+
+        <button class="folder-add-button" id="add-project" type="button" aria-label="Add a new long-term plan">＋</button>
+
+        <form class="new-project-form" id="new-project-form" hidden>
+          <div class="new-project-panel-header">
+            <strong>New Plan</strong>
+            <button class="new-project-panel-close" id="cancel-project" type="button" aria-label="Close new plan panel">×</button>
+          </div>
+          <label for="new-project-name">Plan title</label>
+          <input id="new-project-name" type="text" maxlength="60" placeholder="New plan name" autocomplete="off" />
+          <fieldset class="plan-color-picker">
+            <legend>Color</legend>
+            <div class="plan-color-options">
+              <label class="plan-color-option" style="--swatch:#C7DCCF" aria-label="Mint green"><input type="radio" name="new-project-color" value="#C7DCCF" /><span></span></label>
+              <label class="plan-color-option" style="--swatch:#D8D1E6" aria-label="Lilac"><input type="radio" name="new-project-color" value="#D8D1E6" /><span></span></label>
+              <label class="plan-color-option" style="--swatch:#F6E8B8" aria-label="Light yellow"><input type="radio" name="new-project-color" value="#F6E8B8" /><span></span></label>
+              <label class="plan-color-option" style="--swatch:#FFD8B5" aria-label="Light orange"><input type="radio" name="new-project-color" value="#FFD8B5" /><span></span></label>
+              <label class="plan-color-option" style="--swatch:#DDAAA1" aria-label="Dusty red"><input type="radio" name="new-project-color" value="#DDAAA1" /><span></span></label>
+              <label class="plan-color-option" style="--swatch:#E6E2DD" aria-label="Warm gray"><input type="radio" name="new-project-color" value="#E6E2DD" /><span></span></label>
+            </div>
+          </fieldset>
+          <button class="create-project-button" type="submit">Create plan</button>
+        </form>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script defer src="./demo.js"></script>
+  </body>
+</html>

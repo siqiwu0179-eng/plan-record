@@ -1,3 +1,4 @@
+import { trackAnalytics } from "../utils/analytics";
 import { type FormEvent, useEffect, useState } from "react";
 import { Eye, EyeOff, X } from "lucide-react";
 import { isSupabaseConfigured, supabase } from "../lib/supabase";
@@ -67,6 +68,9 @@ export function AuthScreen({ open, onClose, onAuthenticated }: Props) {
     if (result.error) {
       setMessage(result.error.message);
       return;
+    }
+    if (mode === "signin" && result.data.session) {
+      trackAnalytics(result.data.session.user.id, "user_logged_in", "auth");
     }
     if (mode === "signup" && !result.data.session) {
       setMessage("注册成功，但项目仍要求验证邮箱。请在 Supabase 中关闭 Confirm email。");
