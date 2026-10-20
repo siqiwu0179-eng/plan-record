@@ -4,9 +4,32 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>计划与记录</title>
+    <style>
+      #dify-chatbot-bubble-button {
+        background-color: #1c64f2 !important;
+      }
+      #dify-chatbot-bubble-window {
+        width: min(24rem, calc(100vw - 2rem)) !important;
+        height: min(40rem, calc(100dvh - 6rem)) !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      window.difyChatbotConfig = {
+        token: "gs3XbpNKWUMeZiBs",
+        baseUrl: "https://udify.app",
+        inputs: {},
+        systemVariables: {},
+        userVariables: {},
+      };
+    </script>
+    <script
+      src="https://udify.app/embed.min.js"
+      id="gs3XbpNKWUMeZiBs"
+      defer
+    ></script>
   </body>
 </html>
