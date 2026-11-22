@@ -32,11 +32,18 @@
 
 - `Supabase Auth`：负责账户注册、登录和会话
 - `public.profiles`：保存用户昵称和头像路径
-- `public.user_data`：保存计划、心情、旅行、主题和统计数据
+- `public.plan_tasks` / `public.task_completions`：保存每日任务和完成状态
+- `public.mood_records` / `public.travel_records`：保存心情和旅行记录
+- `public.long_term_plans` / `public.long_term_compass`：保存长期计划和人生罗盘
+- `public.user_preferences`：保存主题和首页格言
 - `Supabase Storage / avatars`：保存用户头像
 - Row Level Security（RLS）：每位登录用户只能访问自己的数据
 
 浏览器 LocalStorage 现在仅作为当前浏览器的运行缓存。用户登录后，系统以 Supabase 中该账户的数据为准并加载到浏览器；修改计划、心情、旅行记录或个人资料后，再同步回 Supabase。更换 Safari、Chrome 或其他设备登录同一账户时，不应再用新浏览器中的旧 LocalStorage 覆盖云端数据。
+
+列表读取按稳定顺序每批请求 500 条，并核对精确总数，直到完整读取任务、完成状态及其他业务列表。不能将 Supabase 默认单次最多返回 1000 条当作账户的全部记录；中途读取失败或数量发生变化时，页面提示重新加载，避免把不完整的列表当成空记录继续编辑。
+
+保存重试和长期计划的未保存草稿目前只在页面内存中运行，不能保证刷新或关闭网页后恢复尚未写入云端的改动。软删除保留已删除的业务行，供确认后恢复；升级前的手工数据库快照也不能代替持续备份。这些机制与列表完整读取分别解决不同问题。
 
 ## 已完成的主要更新
 

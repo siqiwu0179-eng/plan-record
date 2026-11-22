@@ -1,17 +1,17 @@
 import { supabase } from "../lib/supabase";
+import { loadAllRows } from "./loadAllRows";
 import { blankDetails, type Compass, type PlanState } from "./longTermLocal";
 export type Workspace = PlanState & { compass: Compass; versions: Record<string, string>; compassVersion: string | null };
 export const emptyWorkspace = (): Workspace => ({ plans: [], details: {}, compass: { vision: "", creed: "", fiveYears: "" }, versions: {}, compassVersion: null });
 const client = () => { if (!supabase) throw new Error("Supabase 尚未配置"); return supabase; };
 export async function loadLongTermWorkspace(userId: string): Promise<Workspace> {
   const [plans, compass] = await Promise.all([
-    client().from("long_term_plans").select("id,title,color,tasks,description,status,details,sort_order,updated_at").eq("user_id", userId).is("deleted_at", null).order("sort_order").order("created_at"),
+    loadAllRows((from, to) => client().from("long_term_plans").select("id,title,color,tasks,description,status,details,sort_order,updated_at", { count: "exact" }).eq("user_id", userId).is("deleted_at", null).order("sort_order").order("created_at").order("id").range(from, to)),
     client().from("long_term_compass").select("vision,creed,five_years,updated_at").eq("user_id", userId).maybeSingle(),
   ]);
-  if (plans.error) throw plans.error;
   if (compass.error) throw compass.error;
   const result = emptyWorkspace();
-  for (const row of plans.data ?? []) {
+  for (const row of plans) {
     result.plans.push({ id: row.id, name: row.title, color: row.color, tasks: row.tasks });
     result.details[row.id] = { ...blankDetails(), ...row.details, goal: row.description, paused: row.details?.paused ?? row.status === "archived" };
     result.versions[row.id] = row.updated_at;

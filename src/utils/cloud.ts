@@ -5,6 +5,7 @@ import type { LongTermPlan, LongTermPlanStep, Task, WeekPlan } from "../types";
 import { startOfWeek, toDateKey } from "./date";
 import type { MoodRecord } from "./mood";
 import type { TravelRoute } from "./travel";
+import { loadAllRows } from "./loadAllRows";
 
 export type CloudData = {
   profileName: string;
@@ -121,19 +122,19 @@ export const loadCloudData = async (session: Session): Promise<CloudData | null>
   const [profileResult, preferencesResult, taskResult, completionResult, moodResult, travelResult] = await Promise.all([
     supabase.from("profiles").select("display_name, avatar_path").eq("user_id", session.user.id).maybeSingle(),
     supabase.from("user_preferences").select("motto, theme").eq("user_id", session.user.id).maybeSingle(),
-    supabase.from("plan_tasks").select("id, task_date, category, title, sort_order, created_at, updated_at").eq("user_id", session.user.id).is("deleted_at", null),
-    supabase.from("task_completions").select("task_id, completed, updated_at").eq("user_id", session.user.id),
-    supabase.from("mood_records").select("record_date, mood, entry, tags").eq("user_id", session.user.id).is("deleted_at", null),
-    supabase.from("travel_records").select("id, from_city, to_city, start_date, end_date, color, sort_order").eq("user_id", session.user.id).is("deleted_at", null).order("sort_order"),
+    loadAllRows((from, to) => supabase!.from("plan_tasks").select("id, task_date, category, title, sort_order, created_at, updated_at", { count: "exact" }).eq("user_id", session.user.id).is("deleted_at", null).order("id").range(from, to)),
+    loadAllRows((from, to) => supabase!.from("task_completions").select("task_id, completed, updated_at", { count: "exact" }).eq("user_id", session.user.id).order("task_id").range(from, to)),
+    loadAllRows((from, to) => supabase!.from("mood_records").select("record_date, mood, entry, tags", { count: "exact" }).eq("user_id", session.user.id).is("deleted_at", null).order("record_date").range(from, to)),
+    loadAllRows((from, to) => supabase!.from("travel_records").select("id, from_city, to_city, start_date, end_date, color, sort_order", { count: "exact" }).eq("user_id", session.user.id).is("deleted_at", null).order("sort_order").order("id").range(from, to)),
   ]);
 
-  for (const result of [profileResult, preferencesResult, taskResult, completionResult, moodResult, travelResult]) {
+  for (const result of [profileResult, preferencesResult]) {
     if (result.error) throw result.error;
   }
   const moods = Object.fromEntries(
-    (moodResult.data ?? []).map((row) => [row.record_date, { mood: row.mood, entry: row.entry, tags: row.tags ?? [] }]),
+    moodResult.map((row) => [row.record_date, { mood: row.mood, entry: row.entry, tags: row.tags ?? [] }]),
   );
-  const travelRoutes = (travelResult.data ?? []).map((row) => ({
+  const travelRoutes = travelResult.map((row) => ({
     id: row.id,
     from: row.from_city,
     to: row.to_city,
@@ -147,7 +148,7 @@ export const loadCloudData = async (session: Session): Promise<CloudData | null>
     avatarPath: profileResult.data?.avatar_path ?? null,
     motto: preferencesResult.data?.motto || "把今天过好，就是最可靠的进步。",
     theme: preferencesResult.data?.theme === "dark" ? "dark" : "light",
-    plans: buildPlans((taskResult.data ?? []) as PlanTaskRow[], (completionResult.data ?? []) as CompletionRow[]),
+    plans: buildPlans(taskResult as PlanTaskRow[], completionResult as CompletionRow[]),
     moods,
     travelRoutes,
   };
@@ -285,14 +286,13 @@ const normalizeLongTermSteps = (value: unknown): LongTermPlanStep[] => {
 
 export const loadLongTermPlans = async (session: Session): Promise<LongTermPlan[]> => {
   if (!supabase) return [];
-  const { data, error } = await supabase
+  const rows = await loadAllRows((from, to) => supabase!
     .from("long_term_plans")
-    .select("id, title, color, tasks, sort_order")
+    .select("id, title, color, tasks, sort_order", { count: "exact" })
     .eq("user_id", session.user.id)
     .is("deleted_at", null)
-    .order("sort_order");
-  if (error) throw error;
-  return (data ?? []).map((row) => ({
+    .order("sort_order").order("id").range(from, to));
+  return rows.map((row) => ({
     id: row.id,
     name: row.title,
     color: row.color,

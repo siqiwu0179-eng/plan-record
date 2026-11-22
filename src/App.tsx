@@ -51,6 +51,8 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [cloudReady, setCloudReady] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
 
   const initialWeekStart = toDateKey(startOfWeek(new Date()));
   const [plans, setPlans] = useState<StoredPlans>(() => ({ [initialWeekStart]: createWeekPlan(initialWeekStart) }));
@@ -79,6 +81,7 @@ function App() {
 
     const hydrate = async (nextSession: Session | null) => {
       const requestVersion = ++hydrationVersion;
+      if (mounted) setLoadError("");
       if (!nextSession || (hydratedUserId && hydratedUserId !== nextSession.user.id)) clearLongTermStores();
       if (mounted) setCloudReady(false);
       if (!nextSession) {
@@ -125,6 +128,9 @@ function App() {
         hydrationSucceeded = true;
       } catch (error) {
         console.error("Unable to load plan-record data", error);
+        if (mounted && requestVersion === hydrationVersion) {
+          setLoadError("云端数据未完整加载，请重新加载后再编辑。现有云端记录仍保留。");
+        }
       }
 
       if (mounted && requestVersion === hydrationVersion) {
@@ -143,7 +149,7 @@ function App() {
       mounted = false;
       listener.subscription.unsubscribe();
     };
-  }, []);
+  }, [loadAttempt]);
 
   useEffect(() => {
     clearLegacyBusinessCache();
@@ -537,6 +543,14 @@ function App() {
           setShowAuthModal(false);
         }}
       />
+      {loadError && (
+        <div role="alert" className="fixed inset-0 z-[210] flex items-center justify-center bg-slate-950/30 p-4">
+          <div className="max-w-md rounded-xl bg-white p-6 text-sm text-slate-800 shadow-xl dark:bg-slate-900 dark:text-slate-100">
+            <p>{loadError}</p>
+            <button type="button" onClick={() => setLoadAttempt(value => value + 1)} className="mt-4 rounded-lg bg-slate-900 px-4 py-2 text-white dark:bg-white dark:text-slate-900">重新加载数据</button>
+          </div>
+        </div>
+      )}
       {saveError && (
         <div role="alert" className="fixed bottom-6 left-1/2 z-[200] flex max-w-[calc(100vw-2rem)] -translate-x-1/2 items-center gap-3 rounded-xl border border-red-200 bg-white px-4 py-3 text-sm text-red-600 shadow-xl dark:border-red-900 dark:bg-slate-900">
           <span>{saveError}</span>
